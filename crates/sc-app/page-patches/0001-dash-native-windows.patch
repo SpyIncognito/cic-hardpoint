@@ -1,0 +1,128 @@
+--- a/pages/dash.html
++++ b/pages/dash.html
+@@ -1239,6 +1239,8 @@
+ 
+     // ------------------------------------------------------------ detach and placement
+ 
++    // In the Hardpoint app, window.scApp opens tabs in native windows on a display; a plain browser has none.
++    const APP = window.scApp || null;
+     const hasScreens = () => typeof window.getScreenDetails === 'function';
+     const tabUrl = (tab, fs) => `/dash?tab=${encodeURIComponent(tab.id)}&kiosk=1${fs ? '&fs=1' : ''}`;
+     const winName = (tab) => `sc-dash-${tab.id}`;
+@@ -1257,6 +1259,7 @@
+ 
+     async function detach(tab) {
+       if (!tab) return;
++      if (APP) return detachInApp(tab);
+       const { details, why } = await screenDetails();
+       if (!details) return detachByHand(tab, why);
+       const screens = details.screens;
+@@ -1283,6 +1286,32 @@
+       send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
+     }
+ 
++    /** The app's displays come with their names (the monitor's own name), so the picker is the same. */
++    async function detachInApp(tab) {
++      const { displays, shared } = await APP.request('displays');
++      if (!displays.length) { notice('The app sees no displays', 'bad'); return; }
++      const labels = displays.map((d) => d.label);
++      const wanted = tab.placement ? labels.indexOf(tab.placement.displayLabel) : -1;
++      const pick = wanted >= 0 ? wanted : Math.max(0, displays.findIndex((d) => !d.primary));
++      const text = (d) => `${d.width} x ${d.height} at ${d.left}, ${d.top}${d.primary ? ', primary' : ''}${d.builtin ? ', built in' : ''}`;
++      const list = displays.map((d, i) => `<label class="screen"><input type="radio" name="scr" value="${i}" ${i === pick ? 'checked' : ''} />` +
++        `<b>${esc(d.label || 'Unnamed display')}</b><small>${esc(text(d))}</small></label>`).join('');
++      const body = `<p>Choose the display for ${esc(tab.name)}. It opens in use mode, with the cursor hidden, and never takes the focus from the game.</p><div class="screens">${list}</div>` +
++        `<label class="check"><input type="checkbox" id="d-fs" ${!tab.placement || tab.placement.fullscreen ? 'checked' : ''} /> Full screen</label>` +
++        `<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>` +
++        (tab.placement && wanted < 0 ? `<p class="warn">The remembered display, ${esc(tab.placement.displayLabel)}, is not connected.</p>` : '');
++      const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open on display', value: 'open', cls: 'primary' }]);
++      if (c !== 'open') return;
++      const d = displays[Number(($('dlg-body').querySelector('input[name=scr]:checked') || {}).value || 0)];
++      const fs = $('d-fs').checked;
++      const label = (d.label || '').trim();
++      if (!label) { notice('This display has no name, so the app cannot place a window on it by name', 'bad'); return; }
++      if (shared.includes(d.label)) { notice(`Two displays are named ${label}, so the app cannot tell them apart`, 'bad'); return; }
++      const r = await APP.request('open', { tab: tab.id, displayLabel: d.label, fullscreen: fs });
++      if (!r.ok) { notice(r.text, 'bad'); return; }
++      if ($('d-keep').checked) send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
++    }
++
+     async function detachByHand(tab, why) {
+       const body = `<p>${esc(why)}</p><p>${esc(tab.name)} opens in a new window. Drag it to the display you want, then press F11 for full screen.</p>` +
+         '<p class="warn">Without the API the display cannot be remembered for this tab.</p>';
+@@ -1291,6 +1320,13 @@
+     }
+ 
+     async function restoreDetached() {
++      if (APP) {
++        const { tabs } = await APP.request('restore');
++        const text = { open: 'opened', missing: 'display not connected', ambiguous: 'two displays have this name', failed: 'could not open' };
++        const body = `<ul class="list">${tabs.map((t) => `<li><span>${esc(t.name)}</span><small class="${t.state === 'open' ? '' : 'bad'}">${esc(t.displayLabel)}: ${esc(text[t.state] || t.state)}</small></li>`).join('')}</ul>`;
++        await ask('Restore detached tabs', body, [{ text: 'Close', value: 'close', cls: 'primary' }]);
++        return;
++      }
+       const placed = dash.tabs.filter((t) => t.placement);
+       const { details, why } = await screenDetails();
+       if (!details) {
+@@ -1398,8 +1434,8 @@
+       $('kiosk-menu').hidden = true;
+       if (k === 'map') openBezelPanel(currentId);
+       else if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else goFull(); }
+-      else if (k === 'dash') location.href = '/dash';
+-      else if (k === 'close') window.close();
++      else if (k === 'dash') { if (APP) APP.request('dashboard'); else location.href = '/dash'; }
++      else if (k === 'close') { if (APP) APP.request('close'); else window.close(); }
+     });
+ 
+     // ------------------------------------------------------------ bezel buttons
+@@ -1435,11 +1471,15 @@
+ 
+     function openBezelPanel(tabId) {
+       mapping = { tab: tabId, button: null, padId: null };
++      if (APP && KIOSK) APP.request('mapping', { active: true });
+       $('bezel-panel').hidden = false;
+       renderBezelPanel();
+       if (!polling) poll();
+     }
+-    function closeBezelPanel() { mapping = null; $('bezel-panel').hidden = true; }
++    function closeBezelPanel() {
++      if (APP && KIOSK && mapping) APP.request('mapping', { active: false });
++      mapping = null; $('bezel-panel').hidden = true;
++    }
+ 
+     function renderBezelPanel() {
+       if (!mapping) return;
+@@ -1544,6 +1584,7 @@
+         return;
+       }
+       if (!KIOSK || !$('kiosk-menu').hidden) return;
++      if (APP && APP.nativeBezel) return;
+       const t = serverTab(currentId);
+       const m = t && t.bezel && t.bezel.gamepadId === pad.id && t.bezel.buttons.find((x) => x.button === index);
+       if (m) bezelPress(m);
+@@ -1587,6 +1628,25 @@
+       $('hold-bar').querySelector('i').style.width = '0';
+     }
+ 
++    if (APP) {
++      let appHold = null;
++      APP.on((e) => {
++        if (e.type === 'notice') notice(e.text, e.tone);
++        else if (e.type === 'hold') {
++          const started = Date.now();
++          clearInterval(appHold);
++          $('hold-text').textContent = `Hold: ${e.label}`;
++          $('hold-bar').hidden = false;
++          appHold = setInterval(() => { $('hold-bar').querySelector('i').style.width = `${Math.min(1, (Date.now() - started) / HOLD_MS) * 100}%`; }, 50);
++        } else if (e.type === 'holdEnd') {
++          clearInterval(appHold);
++          appHold = null;
++          $('hold-bar').hidden = true;
++          $('hold-bar').querySelector('i').style.width = '0';
++        }
++      });
++    }
++
+     if (KIOSK) poll();
+ 
+     document.body.classList.toggle('editing', editing);

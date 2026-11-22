@@ -1,0 +1,20 @@
+[package]
+name = "fleet-proto"
+description = "The fleet wire protocol shared by Hardpoint and CIC: hello, identity challenge, cards, consent, subscriptions, roll-ups, roles and event structure."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.3"

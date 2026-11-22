@@ -1,0 +1,20 @@
+{
+  "name": "hardpoint-contract",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract and dashboard UI tests for the hardpoint-service binary, over the wire only.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test contract.test.mjs",
+    "test:ui": "node --test dash-ui.test.mjs"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.7",
+    "@grpc/proto-loader": "0.8.1",
+    "ws": "8.20.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

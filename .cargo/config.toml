@@ -1,0 +1,5 @@
+# Windows release build: a static C runtime, so the exe needs no Visual C++ redistributable.
+# No control-flow guard: with a precompiled std and lld-link the CFG build fast-failed at start on
+# Windows 11 (seen on a test PC, and in another project built the same way).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

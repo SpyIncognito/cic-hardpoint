@@ -1,0 +1,2339 @@
+{
+  "limits": {
+    "MAX_NAME": 40,
+    "MAX_PAUSE_S": 60,
+    "MAX_STEPS": 20,
+    "MAX_TIMEOUT_S": 60
+  },
+  "defaultSequences": [
+    {
+      "id": "flight_ready",
+      "name": "Flight ready",
+      "builtIn": true,
+      "steps": [
+        {
+          "kind": "action",
+          "action": "v_flightready"
+        },
+        {
+          "kind": "pause",
+          "seconds": 3
+        },
+        {
+          "kind": "set",
+          "toggle": "door_locks",
+          "to": "on"
+        },
+        {
+          "kind": "set",
+          "toggle": "lights",
+          "to": "on"
+        }
+      ]
+    },
+    {
+      "id": "landing_prep",
+      "name": "Landing prep",
+      "builtIn": true,
+      "steps": [
+        {
+          "kind": "mode",
+          "to": "SCM"
+        },
+        {
+          "kind": "set",
+          "toggle": "gear",
+          "to": "on"
+        },
+        {
+          "kind": "set",
+          "toggle": "proximity",
+          "to": "on"
+        },
+        {
+          "kind": "set",
+          "toggle": "lights",
+          "to": "on"
+        }
+      ]
+    },
+    {
+      "id": "combat_ready",
+      "name": "Combat ready",
+      "builtIn": true,
+      "steps": [
+        {
+          "kind": "mode",
+          "to": "SCM"
+        },
+        {
+          "kind": "set",
+          "toggle": "power.shields",
+          "to": "on"
+        },
+        {
+          "kind": "set",
+          "toggle": "power.weapons",
+          "to": "on"
+        }
+      ]
+    },
+    {
+      "id": "shutdown",
+      "name": "Shutdown",
+      "builtIn": true,
+      "steps": [
+        {
+          "kind": "set",
+          "toggle": "lights",
+          "to": "off"
+        }
+      ]
+    }
+  ],
+  "validation": [
+    {
+      "name": "valid",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "bad id",
+      "input": {
+        "id": "Bad Id",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The id must be 1 to 40 lower-case letters, digits, - or _"
+      ]
+    },
+    {
+      "name": "id too long",
+      "input": {
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The id must be 1 to 40 lower-case letters, digits, - or _"
+      ]
+    },
+    {
+      "name": "id 40",
+      "input": {
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "id missing",
+      "input": {
+        "name": "X",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "id number",
+      "input": {
+        "id": 12,
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "empty name",
+      "input": {
+        "id": "ok",
+        "name": "",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The name must be 1 to 40 characters"
+      ]
+    },
+    {
+      "name": "blank name",
+      "input": {
+        "id": "ok",
+        "name": " \t﻿　 ",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The name must be 1 to 40 characters"
+      ]
+    },
+    {
+      "name": "name 41",
+      "input": {
+        "id": "ok",
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The name must be 1 to 40 characters"
+      ]
+    },
+    {
+      "name": "name 40 padded",
+      "input": {
+        "id": "ok",
+        "name": "  nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn  ",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "name 20 emoji",
+      "input": {
+        "id": "ok",
+        "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "name 21 emoji",
+      "input": {
+        "id": "ok",
+        "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "The name must be 1 to 40 characters"
+      ]
+    },
+    {
+      "name": "no steps",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": []
+      },
+      "problems": [
+        "A sequence needs at least one step"
+      ]
+    },
+    {
+      "name": "21 steps",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": [
+        "A sequence can have at most 20 steps"
+      ]
+    },
+    {
+      "name": "20 steps",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          },
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "unknown toggle",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "nope",
+            "to": "on"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: unknown toggle \"nope\""
+      ]
+    },
+    {
+      "name": "toggle number",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": 7,
+            "to": "on"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: unknown toggle \"7\""
+      ]
+    },
+    {
+      "name": "toggle missing",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "to": "on"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: unknown toggle \"undefined\""
+      ]
+    },
+    {
+      "name": "set to maybe",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "maybe"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: set must be on or off"
+      ]
+    },
+    {
+      "name": "set to missing",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "lights"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: set must be on or off"
+      ]
+    },
+    {
+      "name": "mode stealth",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "STEALTH"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: mode must be NAV or SCM"
+      ]
+    },
+    {
+      "name": "mode scm lower",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "scm"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: mode must be NAV or SCM"
+      ]
+    },
+    {
+      "name": "action bad name",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": "V_Lights"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: \"V_Lights\" is not an action name"
+      ]
+    },
+    {
+      "name": "action too long",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" is not an action name"
+      ]
+    },
+    {
+      "name": "action empty",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": ""
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: \"\" is not an action name"
+      ]
+    },
+    {
+      "name": "action missing",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action"
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "action list",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": [
+              "v_a",
+              "v_b"
+            ]
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: \"v_a,v_b\" is not an action name"
+      ]
+    },
+    {
+      "name": "action confirm",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": "v_self_destruct"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: \"v_self_destruct\" needs a hold to confirm, so it cannot be a step"
+      ]
+    },
+    {
+      "name": "pause 0",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 0
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: a pause must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "pause 61",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 61
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: a pause must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "pause 60",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 60
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "pause 0.5",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 0.5
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "pause 0.01",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 0.01
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "pause string",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": "3"
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "pause missing",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: a pause must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "pause null",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": null
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: a pause must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "timeout 0",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on",
+            "timeoutS": 0
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: the wait must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "timeout 61",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "NAV",
+            "timeoutS": 61
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: the wait must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "timeout null",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "NAV",
+            "timeoutS": null
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: the wait must be more than 0 and at most 60 seconds"
+      ]
+    },
+    {
+      "name": "timeout 30",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "gear",
+            "to": "off",
+            "timeoutS": 30
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "timeout on action",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "action",
+            "action": "v_lights",
+            "timeoutS": 99
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "name": "unknown kind",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {
+            "kind": "jump"
+          }
+        ]
+      },
+      "problems": [
+        "Step 1: unknown step kind"
+      ]
+    },
+    {
+      "name": "missing kind",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          {}
+        ]
+      },
+      "problems": [
+        "Step 1: unknown step kind"
+      ]
+    },
+    {
+      "name": "step number",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          5
+        ]
+      },
+      "problems": [
+        "Step 1: unknown step kind"
+      ]
+    },
+    {
+      "name": "step string",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          "set"
+        ]
+      },
+      "problems": [
+        "Step 1: unknown step kind"
+      ]
+    },
+    {
+      "name": "many problems",
+      "input": {
+        "id": "Bad Id",
+        "name": "",
+        "steps": [
+          {
+            "kind": "action",
+            "action": "v_self_destruct"
+          },
+          {
+            "kind": "set",
+            "toggle": "nope",
+            "to": "on"
+          },
+          {
+            "kind": "mode",
+            "to": "x",
+            "timeoutS": -1
+          },
+          {
+            "kind": "x"
+          }
+        ]
+      },
+      "problems": [
+        "The id must be 1 to 40 lower-case letters, digits, - or _",
+        "The name must be 1 to 40 characters",
+        "Step 1: \"v_self_destruct\" needs a hold to confirm, so it cannot be a step",
+        "Step 2: unknown toggle \"nope\"",
+        "Step 3: mode must be NAV or SCM",
+        "Step 3: the wait must be more than 0 and at most 60 seconds",
+        "Step 4: unknown step kind"
+      ]
+    },
+    {
+      "name": "throws: name number",
+      "input": {
+        "id": "ok",
+        "name": 5,
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "throws": true
+    },
+    {
+      "name": "throws: name missing",
+      "input": {
+        "id": "x",
+        "steps": [
+          {
+            "kind": "pause",
+            "seconds": 1
+          }
+        ]
+      },
+      "throws": true
+    },
+    {
+      "name": "throws: steps missing",
+      "input": {
+        "id": "x",
+        "name": "X"
+      },
+      "throws": true
+    },
+    {
+      "name": "throws: steps string",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": "abc"
+      },
+      "throws": true
+    },
+    {
+      "name": "throws: null step",
+      "input": {
+        "id": "ok",
+        "name": "OK",
+        "steps": [
+          null
+        ]
+      },
+      "throws": true
+    },
+    {
+      "name": "throws: null",
+      "input": null,
+      "throws": true
+    }
+  ],
+  "storeFiles": {
+    "defaults": "{\n  \"version\": 1,\n  \"sequences\": [\n    {\n      \"id\": \"flight_ready\",\n      \"name\": \"Flight ready\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"action\",\n          \"action\": \"v_flightready\"\n        },\n        {\n          \"kind\": \"pause\",\n          \"seconds\": 3\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"door_locks\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        }\n      ]\n    },\n    {\n      \"id\": \"landing_prep\",\n      \"name\": \"Landing prep\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"gear\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"proximity\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        }\n      ]\n    },\n    {\n      \"id\": \"combat_ready\",\n      \"name\": \"Combat ready\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"power.shields\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"power.weapons\",\n          \"to\": \"on\"\n        }\n      ]\n    },\n    {\n      \"id\": \"shutdown\",\n      \"name\": \"Shutdown\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"off\"\n        }\n      ]\n    }\n  ]\n}",
+    "mixed": "{\n  \"version\": 1,\n  \"sequences\": [\n    {\n      \"id\": \"flight_ready\",\n      \"name\": \"Flight ready (mine)\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"action\",\n          \"action\": \"v_flightready\"\n        },\n        {\n          \"kind\": \"pause\",\n          \"seconds\": 3\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"door_locks\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        }\n      ]\n    },\n    {\n      \"id\": \"landing_prep\",\n      \"name\": \"Landing prep\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"gear\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"proximity\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        }\n      ]\n    },\n    {\n      \"id\": \"shutdown\",\n      \"name\": \"Shutdown\",\n      \"builtIn\": true,\n      \"steps\": [\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"off\"\n        }\n      ]\n    },\n    {\n      \"id\": \"mine\",\n      \"name\": \"My checks\",\n      \"steps\": [\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\",\n          \"timeoutS\": 2.5\n        },\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        },\n        {\n          \"kind\": \"pause\",\n          \"seconds\": 1.5\n        },\n        {\n          \"kind\": \"action\",\n          \"action\": \"v_invoke_ping\"\n        }\n      ],\n      \"builtIn\": false\n    },\n    {\n      \"id\": \"landing_prep-copy\",\n      \"name\": \"Landing prep copy\",\n      \"steps\": [\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"gear\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"proximity\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        }\n      ]\n    },\n    {\n      \"id\": \"landing_prep-copy-2\",\n      \"name\": \"Landing prep copy\",\n      \"steps\": [\n        {\n          \"kind\": \"mode\",\n          \"to\": \"SCM\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"gear\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"proximity\",\n          \"to\": \"on\"\n        },\n        {\n          \"kind\": \"set\",\n          \"toggle\": \"lights\",\n          \"to\": \"on\"\n        }\n      ]\n    }\n  ]\n}",
+    "mixedList": [
+      {
+        "id": "flight_ready",
+        "name": "Flight ready (mine)",
+        "builtIn": true,
+        "steps": [
+          {
+            "kind": "action",
+            "action": "v_flightready"
+          },
+          {
+            "kind": "pause",
+            "seconds": 3
+          },
+          {
+            "kind": "set",
+            "toggle": "door_locks",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on"
+          }
+        ]
+      },
+      {
+        "id": "landing_prep",
+        "name": "Landing prep",
+        "builtIn": true,
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "SCM"
+          },
+          {
+            "kind": "set",
+            "toggle": "gear",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "proximity",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on"
+          }
+        ]
+      },
+      {
+        "id": "shutdown",
+        "name": "Shutdown",
+        "builtIn": true,
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "off"
+          }
+        ]
+      },
+      {
+        "id": "mine",
+        "name": "My checks",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on",
+            "timeoutS": 2.5
+          },
+          {
+            "kind": "mode",
+            "to": "SCM"
+          },
+          {
+            "kind": "pause",
+            "seconds": 1.5
+          },
+          {
+            "kind": "action",
+            "action": "v_invoke_ping"
+          }
+        ],
+        "builtIn": false
+      },
+      {
+        "id": "landing_prep-copy",
+        "name": "Landing prep copy",
+        "steps": [
+          {
+            "kind": "set",
+            "toggle": "gear",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "proximity",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on"
+          },
+          {
+            "kind": "mode",
+            "to": "SCM"
+          }
+        ]
+      },
+      {
+        "id": "landing_prep-copy-2",
+        "name": "Landing prep copy",
+        "steps": [
+          {
+            "kind": "mode",
+            "to": "SCM"
+          },
+          {
+            "kind": "set",
+            "toggle": "gear",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "proximity",
+            "to": "on"
+          },
+          {
+            "kind": "set",
+            "toggle": "lights",
+            "to": "on"
+          }
+        ]
+      }
+    ],
+    "saves": [
+      [],
+      [],
+      [
+        "The id must be 1 to 40 lower-case letters, digits, - or _",
+        "The name must be 1 to 40 characters",
+        "A sequence needs at least one step"
+      ]
+    ]
+  },
+  "engineRuns": [
+    {
+      "name": "presses",
+      "ops": [
+        {
+          "op": "press",
+          "action": "v_invoke_ping"
+        },
+        {
+          "op": "press",
+          "action": "v_target_hail"
+        },
+        {
+          "op": "press",
+          "action": "v_self_destruct"
+        },
+        {
+          "op": "press",
+          "action": "v_eject",
+          "confirmed": true
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "press",
+          "action": "v_lights"
+        }
+      ],
+      "results": [
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": false,
+          "status": "needs-confirm",
+          "message": "\"v_self_destruct\" needs a hold to confirm"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        }
+      ],
+      "progress": [],
+      "sent": [
+        {
+          "action": "v_invoke_ping",
+          "at": 0
+        },
+        {
+          "action": "v_target_hail",
+          "at": 150
+        },
+        {
+          "action": "v_eject",
+          "at": 300
+        },
+        {
+          "action": "v_lights",
+          "at": 1300
+        }
+      ],
+      "elapsed": 1300
+    },
+    {
+      "name": "game answers",
+      "answers": [
+        {
+          "status": "RATE_LIMITED"
+        },
+        {
+          "status": "OK"
+        },
+        {
+          "status": "RATE_LIMITED"
+        },
+        {
+          "status": "RATE_LIMITED",
+          "message": "slow down"
+        },
+        {
+          "status": "MAP_INACTIVE"
+        },
+        {
+          "status": "UNREACHABLE",
+          "message": "game closed"
+        }
+      ],
+      "ops": [
+        {
+          "op": "press",
+          "action": "v_lights"
+        },
+        {
+          "op": "press",
+          "action": "v_lights"
+        },
+        {
+          "op": "press",
+          "action": "v_lights"
+        },
+        {
+          "op": "press",
+          "action": "v_lights"
+        }
+      ],
+      "results": [
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": false,
+          "status": "game",
+          "message": "slow down",
+          "game": "RATE_LIMITED"
+        },
+        {
+          "ok": false,
+          "status": "game",
+          "message": "The game answered MAP_INACTIVE",
+          "game": "MAP_INACTIVE"
+        },
+        {
+          "ok": false,
+          "status": "game",
+          "message": "game closed",
+          "game": "UNREACHABLE"
+        }
+      ],
+      "progress": [],
+      "sent": [
+        {
+          "action": "v_lights",
+          "at": 0
+        },
+        {
+          "action": "v_lights",
+          "at": 400
+        },
+        {
+          "action": "v_lights",
+          "at": 550
+        },
+        {
+          "action": "v_lights",
+          "at": 950
+        },
+        {
+          "action": "v_lights",
+          "at": 1100
+        },
+        {
+          "action": "v_lights",
+          "at": 1250
+        }
+      ],
+      "elapsed": 1250
+    },
+    {
+      "name": "set and mode",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship",
+            "lights_enabled": true,
+            "master_mode": {
+              "mode": "VEHICLE_MASTER_MODE_SCM"
+            },
+            "flight": {
+              "state": {
+                "gear": "VEHICLE_COMPONENT_DEPLOYMENT_STATE_DEPLOYING"
+              },
+              "settings": {
+                "ifcs_esp": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "toggle": "lights",
+          "to": "on"
+        },
+        {
+          "op": "set",
+          "toggle": "lights",
+          "to": "off"
+        },
+        {
+          "op": "set",
+          "toggle": "gear",
+          "to": "on"
+        },
+        {
+          "op": "set",
+          "toggle": "gear",
+          "to": "off"
+        },
+        {
+          "op": "set",
+          "toggle": "esp",
+          "to": "on"
+        },
+        {
+          "op": "set",
+          "toggle": "door_locks",
+          "to": "on"
+        },
+        {
+          "op": "set",
+          "toggle": "nope",
+          "to": "on"
+        },
+        {
+          "op": "setMode",
+          "to": "SCM"
+        },
+        {
+          "op": "setMode",
+          "to": "NAV"
+        },
+        {
+          "op": "advance",
+          "ms": 1500
+        },
+        {
+          "op": "set",
+          "toggle": "lights",
+          "to": "off"
+        },
+        {
+          "op": "setMode",
+          "to": "NAV"
+        },
+        {
+          "op": "advance",
+          "ms": 2000
+        },
+        {
+          "op": "set",
+          "toggle": "lights",
+          "to": "off"
+        },
+        {
+          "op": "setMode",
+          "to": "NAV"
+        }
+      ],
+      "results": [
+        {
+          "ok": true,
+          "status": "already"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": true,
+          "status": "already"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": false,
+          "status": "stale",
+          "message": "Door locks: state not known"
+        },
+        {
+          "ok": false,
+          "status": "unknown",
+          "message": "Unknown toggle \"nope\""
+        },
+        {
+          "ok": true,
+          "status": "already"
+        },
+        {
+          "ok": true,
+          "status": "done"
+        },
+        {
+          "ok": false,
+          "status": "stale",
+          "message": "Ship lights: no fresh state from the game"
+        },
+        {
+          "ok": false,
+          "status": "stale",
+          "message": "Master mode is not known right now"
+        },
+        {
+          "ok": false,
+          "status": "not-in-vehicle",
+          "message": "Not in a vehicle"
+        },
+        {
+          "ok": false,
+          "status": "not-in-vehicle",
+          "message": "Not in a vehicle"
+        }
+      ],
+      "progress": [],
+      "sent": [
+        {
+          "action": "v_lights_off",
+          "at": 0
+        },
+        {
+          "action": "v_retract_landing_system",
+          "at": 150
+        },
+        {
+          "action": "v_ifcs_toggle_esp",
+          "at": 300
+        },
+        {
+          "action": "v_master_mode_set_nav",
+          "at": 450
+        }
+      ],
+      "elapsed": 3950
+    },
+    {
+      "name": "no master mode",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship"
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "setMode",
+          "to": "SCM"
+        }
+      ],
+      "results": [
+        {
+          "ok": false,
+          "status": "stale",
+          "message": "Master mode is not known right now"
+        }
+      ],
+      "progress": [],
+      "sent": [],
+      "elapsed": 0
+    },
+    {
+      "name": "flight ready from cold, state never refreshed",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship"
+          }
+        }
+      },
+      "onSend": {
+        "v_flightready": {
+          "vehicle": {
+            "state": {
+              "name": "Test ship",
+              "doors": {
+                "lock_state": "DOOR_LOCK_STATE_UNLOCKED"
+              }
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "flight_ready",
+            "name": "Flight ready",
+            "builtIn": true,
+            "steps": [
+              {
+                "kind": "action",
+                "action": "v_flightready"
+              },
+              {
+                "kind": "pause",
+                "seconds": 3
+              },
+              {
+                "kind": "set",
+                "toggle": "door_locks",
+                "to": "on"
+              },
+              {
+                "kind": "set",
+                "toggle": "lights",
+                "to": "on"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 4,
+          "of": 4,
+          "status": "done",
+          "unconfirmed": 2
+        }
+      ],
+      "progress": [
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 1,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 2,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 3,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 4,
+          "of": 4,
+          "status": "running",
+          "unconfirmed": 1
+        },
+        {
+          "id": "flight_ready",
+          "name": "Flight ready",
+          "step": 4,
+          "of": 4,
+          "status": "done",
+          "unconfirmed": 2
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_flightready",
+          "at": 0
+        },
+        {
+          "action": "v_lock_all_doors",
+          "at": 5000
+        },
+        {
+          "action": "v_lights_on",
+          "at": 7000
+        }
+      ],
+      "elapsed": 7000
+    },
+    {
+      "name": "landing prep",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship",
+            "master_mode": {
+              "mode": "VEHICLE_MASTER_MODE_NAVIGATION"
+            },
+            "flight": {
+              "state": {
+                "gear": "VEHICLE_COMPONENT_DEPLOYMENT_STATE_RETRACTED"
+              }
+            }
+          }
+        }
+      },
+      "onSend": {
+        "v_master_mode_set_scm": {
+          "vehicle": {
+            "state": {
+              "name": "Test ship",
+              "master_mode": {
+                "mode": "VEHICLE_MASTER_MODE_SCM"
+              },
+              "flight": {
+                "state": {
+                  "gear": "VEHICLE_COMPONENT_DEPLOYMENT_STATE_RETRACTED"
+                }
+              }
+            }
+          }
+        },
+        "v_deploy_landing_system": {
+          "vehicle": {
+            "state": {
+              "name": "Test ship",
+              "master_mode": {
+                "mode": "VEHICLE_MASTER_MODE_SCM"
+              },
+              "flight": {
+                "state": {
+                  "gear": "VEHICLE_COMPONENT_DEPLOYMENT_STATE_DEPLOYING"
+                },
+                "settings": {
+                  "ifcs_proximity_assist": {
+                    "active": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "v_lights_on": {
+          "vehicle": {
+            "state": {
+              "name": "Test ship",
+              "master_mode": {
+                "mode": "VEHICLE_MASTER_MODE_SCM"
+              },
+              "lights_enabled": true
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "landing_prep",
+            "name": "Landing prep",
+            "builtIn": true,
+            "steps": [
+              {
+                "kind": "mode",
+                "to": "SCM"
+              },
+              {
+                "kind": "set",
+                "toggle": "gear",
+                "to": "on"
+              },
+              {
+                "kind": "set",
+                "toggle": "proximity",
+                "to": "on"
+              },
+              {
+                "kind": "set",
+                "toggle": "lights",
+                "to": "on"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 4,
+          "of": 4,
+          "status": "done"
+        }
+      ],
+      "progress": [
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 1,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 2,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 3,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 4,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "landing_prep",
+          "name": "Landing prep",
+          "step": 4,
+          "of": 4,
+          "status": "done"
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_master_mode_set_scm",
+          "at": 0
+        },
+        {
+          "action": "v_deploy_landing_system",
+          "at": 150
+        },
+        {
+          "action": "v_lights_on",
+          "at": 300
+        }
+      ],
+      "elapsed": 300
+    },
+    {
+      "name": "combat ready, already there",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship",
+            "master_mode": {
+              "mode": "VEHICLE_MASTER_MODE_SCM"
+            },
+            "power": {
+              "shield_generators": true,
+              "weapons": true
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "combat_ready",
+            "name": "Combat ready",
+            "builtIn": true,
+            "steps": [
+              {
+                "kind": "mode",
+                "to": "SCM"
+              },
+              {
+                "kind": "set",
+                "toggle": "power.shields",
+                "to": "on"
+              },
+              {
+                "kind": "set",
+                "toggle": "power.weapons",
+                "to": "on"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "combat_ready",
+          "name": "Combat ready",
+          "step": 3,
+          "of": 3,
+          "status": "done"
+        }
+      ],
+      "progress": [
+        {
+          "id": "combat_ready",
+          "name": "Combat ready",
+          "step": 1,
+          "of": 3,
+          "status": "running"
+        },
+        {
+          "id": "combat_ready",
+          "name": "Combat ready",
+          "step": 2,
+          "of": 3,
+          "status": "running"
+        },
+        {
+          "id": "combat_ready",
+          "name": "Combat ready",
+          "step": 3,
+          "of": 3,
+          "status": "running"
+        },
+        {
+          "id": "combat_ready",
+          "name": "Combat ready",
+          "step": 3,
+          "of": 3,
+          "status": "done"
+        }
+      ],
+      "sent": [],
+      "elapsed": 0
+    },
+    {
+      "name": "shutdown, lights do not turn off",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship",
+            "lights_enabled": true
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "shutdown",
+            "name": "Shutdown",
+            "builtIn": true,
+            "steps": [
+              {
+                "kind": "set",
+                "toggle": "lights",
+                "to": "off"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "shutdown",
+          "name": "Shutdown",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Ship lights did not turn off"
+        }
+      ],
+      "progress": [
+        {
+          "id": "shutdown",
+          "name": "Shutdown",
+          "step": 1,
+          "of": 1,
+          "status": "running"
+        },
+        {
+          "id": "shutdown",
+          "name": "Shutdown",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Ship lights did not turn off"
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_lights_off",
+          "at": 0
+        }
+      ],
+      "elapsed": 2000
+    },
+    {
+      "name": "mode step timeout",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship",
+            "master_mode": {
+              "mode": "VEHICLE_MASTER_MODE_NAVIGATION"
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "m",
+            "name": "M",
+            "steps": [
+              {
+                "kind": "mode",
+                "to": "SCM",
+                "timeoutS": 0.75
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "m",
+          "name": "M",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Master mode did not change to SCM"
+        }
+      ],
+      "progress": [
+        {
+          "id": "m",
+          "name": "M",
+          "step": 1,
+          "of": 1,
+          "status": "running"
+        },
+        {
+          "id": "m",
+          "name": "M",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Master mode did not change to SCM"
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_master_mode_set_scm",
+          "at": 0
+        }
+      ],
+      "elapsed": 800
+    },
+    {
+      "name": "game refuses mid-sequence",
+      "answers": [
+        {
+          "status": "OK"
+        },
+        {
+          "status": "MAP_INACTIVE"
+        }
+      ],
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "g",
+            "name": "G",
+            "steps": [
+              {
+                "kind": "action",
+                "action": "v_a"
+              },
+              {
+                "kind": "pause",
+                "seconds": 0.25
+              },
+              {
+                "kind": "action",
+                "action": "v_b"
+              },
+              {
+                "kind": "action",
+                "action": "v_c"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "g",
+          "name": "G",
+          "step": 3,
+          "of": 4,
+          "status": "failed",
+          "message": "The game answered MAP_INACTIVE"
+        }
+      ],
+      "progress": [
+        {
+          "id": "g",
+          "name": "G",
+          "step": 1,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "g",
+          "name": "G",
+          "step": 2,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "g",
+          "name": "G",
+          "step": 3,
+          "of": 4,
+          "status": "running"
+        },
+        {
+          "id": "g",
+          "name": "G",
+          "step": 3,
+          "of": 4,
+          "status": "failed",
+          "message": "The game answered MAP_INACTIVE"
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_a",
+          "at": 0
+        },
+        {
+          "action": "v_b",
+          "at": 250
+        }
+      ],
+      "elapsed": 250
+    },
+    {
+      "name": "bad steps",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Test ship"
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "u",
+            "name": "U",
+            "steps": [
+              {
+                "kind": "set",
+                "toggle": "nope",
+                "to": "on"
+              }
+            ]
+          }
+        },
+        {
+          "op": "run",
+          "sequence": {
+            "id": "c",
+            "name": "C",
+            "steps": [
+              {
+                "kind": "action",
+                "action": "v_eject"
+              }
+            ]
+          }
+        },
+        {
+          "op": "run",
+          "sequence": {
+            "id": "e",
+            "name": "E",
+            "steps": []
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "u",
+          "name": "U",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Unknown toggle \"nope\""
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "\"v_eject\" cannot run inside a sequence"
+        },
+        {
+          "id": "e",
+          "name": "E",
+          "step": 0,
+          "of": 0,
+          "status": "done"
+        }
+      ],
+      "progress": [
+        {
+          "id": "u",
+          "name": "U",
+          "step": 1,
+          "of": 1,
+          "status": "running"
+        },
+        {
+          "id": "u",
+          "name": "U",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "Unknown toggle \"nope\""
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "step": 1,
+          "of": 1,
+          "status": "running"
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "step": 1,
+          "of": 1,
+          "status": "failed",
+          "message": "\"v_eject\" cannot run inside a sequence"
+        },
+        {
+          "id": "e",
+          "name": "E",
+          "step": 0,
+          "of": 0,
+          "status": "done"
+        }
+      ],
+      "sent": [],
+      "elapsed": 0
+    },
+    {
+      "name": "unconfirmed and skipped",
+      "frame": {
+        "vehicle": {
+          "state": {
+            "name": "Ship",
+            "flight": {
+              "settings": {}
+            }
+          }
+        }
+      },
+      "ops": [
+        {
+          "op": "run",
+          "sequence": {
+            "id": "us",
+            "name": "US",
+            "steps": [
+              {
+                "kind": "set",
+                "toggle": "door_locks",
+                "to": "off",
+                "timeoutS": 0.5
+              },
+              {
+                "kind": "set",
+                "toggle": "door_locks",
+                "to": "on",
+                "timeoutS": 0.5
+              },
+              {
+                "kind": "set",
+                "toggle": "door_locks",
+                "to": "off",
+                "timeoutS": 0.5
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "id": "us",
+          "name": "US",
+          "step": 3,
+          "of": 3,
+          "status": "done",
+          "skipped": 2,
+          "unconfirmed": 1
+        }
+      ],
+      "progress": [
+        {
+          "id": "us",
+          "name": "US",
+          "step": 1,
+          "of": 3,
+          "status": "running"
+        },
+        {
+          "id": "us",
+          "name": "US",
+          "step": 2,
+          "of": 3,
+          "status": "running",
+          "skipped": 1
+        },
+        {
+          "id": "us",
+          "name": "US",
+          "step": 3,
+          "of": 3,
+          "status": "running",
+          "skipped": 1,
+          "unconfirmed": 1
+        },
+        {
+          "id": "us",
+          "name": "US",
+          "step": 3,
+          "of": 3,
+          "status": "done",
+          "skipped": 2,
+          "unconfirmed": 1
+        }
+      ],
+      "sent": [
+        {
+          "action": "v_lock_all_doors",
+          "at": 1000
+        }
+      ],
+      "elapsed": 1500
+    }
+  ]
+}

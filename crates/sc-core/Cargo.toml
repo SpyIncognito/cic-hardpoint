@@ -1,0 +1,22 @@
+[package]
+name = "sc-core"
+description = "The Hardpoint core: state model, values, catalog, engine and sequences. Ported from packages/sc-control-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sc-game = { path = "../sc-game" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+# Exact float parsing, so fixture numbers match what node parsed bit for bit.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+tokio = { workspace = true, features = ["test-util"] }
+futures-util = { version = "0.3", default-features = false }

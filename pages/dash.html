@@ -1,0 +1,2642 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hardpoint Dashboard</title>
+  <link rel="stylesheet" href="/vendor/gridstack/gridstack.min.css" />
+  <style>
+    /* Colours come from the theme. The service puts every built-in here in place of this block (RSI, for a
+       service without themes); a user theme's colours are set on the body. */
+    /*__THEMES__*/[data-theme="rsi"] { --bg: #0c1318; --panel: #18232b; --panel-2: #202d36; --line: #364955; --fg: #eef3f5; --dim: #8fa1ab; --faint: #4a5d68; --value: #ffffff; --accent: #f5c518; --select: #ff8a1e; --select-fg: #170b02; --title-bg: #e8edf0; --title-fg: #0b1217; --bar: #e8edf0; --ok: #55d494; --warn: #ffb020; --bad: #ff4d40; --off: #6b7c86; --lamp-off-bg: #0e161b; --lamp-off-fg: #6f818b; --lamp-nominal-bg: #17232b; --lamp-nominal-fg: #b8c8d0; --lamp-on-bg: #17442f; --lamp-on-fg: #8ff2bf; --lamp-minor-bg: #5c3e05; --lamp-minor-fg: #ffc94a; --lamp-major-bg: #621510; --lamp-major-fg: #ff7466; --input-bg: #081014; --input-fg: #eef3f5; --input-border: #4f6573; --input-placeholder: #8fa1ab; --input-focus: #f5c518; }/*__END_THEMES__*/
+    @font-face { font-family: "Barlow Semi Condensed"; font-weight: 500; font-display: swap; src: url(/vendor/barlow-semi-condensed/barlow-semi-condensed-latin-500-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-display: swap; src: url(/vendor/barlow-semi-condensed/barlow-semi-condensed-latin-600-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url(/vendor/barlow-semi-condensed/barlow-semi-condensed-latin-700-normal.woff2) format("woff2"); }
+    /* Shapes and type: every widget reads these; a base (the built-in a theme comes from) changes them. */
+    body {
+      --radius: 2px;
+      --lamp-radius: 2px;
+      --plate-r: 5px;
+      --edge: 2px;
+      --lw: 1px;
+      --rule: solid;
+      --gap: 3px;
+      --bar-h: 36px;
+      --pane-w: 340px;
+      --font-ui: "Segoe UI", system-ui, "DejaVu Sans", sans-serif;
+      --weight-label: 600;
+      --weight-value: 700;
+      --tracking: .06em;
+      --title-pre: "";
+      --chev-l: "";
+      --chev-r: "";
+      --lz: .3;
+    }
+    [data-font="condensed"] { --font: "Barlow Semi Condensed", "Bahnschrift SemiCondensed", "Bahnschrift", "Roboto Condensed", "Arial Narrow", sans-serif; }
+    [data-font="mono"] { --font: "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
+    [data-font="sans"] { --font: system-ui, "Segoe UI", "DejaVu Sans", sans-serif; }
+    [data-base="rsi"] { --lamp-radius: 6px; --tracking: .07em; --chev-l: "\00AB"; --chev-r: "\00BB"; --chamfer: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); }
+    [data-base="drake"] { --radius: 0; --lamp-radius: 0; --plate-r: 0; --edge: 1px; --rule: dashed; --tracking: .16em; --weight-label: 700; --title-pre: "// "; --chev-l: "<"; --chev-r: ">"; --lz: 0; --font-ui: var(--font); }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { background: var(--bg); color: var(--fg); font: 13px/1.35 var(--font-ui); }
+    [data-base="drake"] #body { background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--accent) 9%, var(--bg)), var(--bg) 75%); }
+    /* A faint CRT scanline over the whole Drake screen; it never takes a click. */
+    [data-base="drake"]::after { content: ""; position: fixed; inset: 0; z-index: 40; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--bg) 22%, transparent) 2px 3px); }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    /* Every text field and list takes its colours from the theme, never the native white control;
+       color-scheme keeps WebView2 and Chromium from drawing light scrollbars, pickers and option lists. */
+    :root { color-scheme: dark; }
+    input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]), select, textarea {
+      background-color: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); border-radius: var(--radius); padding: 3px 6px; }
+    input::placeholder, textarea::placeholder { color: var(--input-placeholder); opacity: 1; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--input-focus); outline-offset: 0; border-color: var(--input-focus); }
+    select option, select optgroup { background-color: var(--input-bg); color: var(--input-fg); }
+    input[type=checkbox], input[type=radio] { accent-color: var(--input-focus); }
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    /* ------------------------------------------------------------ bar */
+    #bar { flex: 0 0 var(--bar-h); display: flex; align-items: stretch; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
+    #bar[hidden] { display: none; }
+    #tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; }
+    .tab { flex: 0 0 auto; background: none; border: 0; border-bottom: 2px solid transparent; padding: 0 12px; cursor: pointer; color: var(--dim); font-family: var(--font); font-weight: var(--weight-label); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; }
+    .tab.on { color: var(--fg); border-bottom-color: var(--select); }
+    /* The selected tab is the page title: filled, between the base's chevrons. */
+    .tab.on::before { content: var(--chev-l); margin-right: 10px; }
+    .tab.on::after { content: var(--chev-r); margin-left: 10px; }
+    [data-base="drake"] #tabs { gap: 6px; align-items: center; }
+    [data-base="drake"] .tab { height: 26px; border: 1px solid transparent; letter-spacing: var(--tracking); }
+    [data-base="drake"] .tab.on { background: var(--title-bg); color: var(--title-fg); border-color: var(--title-bg); }
+    [data-base="rsi"] #tabs { gap: 4px; align-items: center; }
+    [data-base="rsi"] .tab { height: 24px; padding: 0 16px; border: 0; background: var(--panel-2); color: var(--dim); clip-path: var(--chamfer); }
+    [data-base="rsi"] .tab.on { background: var(--title-bg); color: var(--title-fg); }
+    .tab.add { color: var(--accent); }
+    .tools { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+    .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover:not(:disabled) { border-color: var(--accent); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn.primary { background: var(--select); border-color: var(--select); color: var(--select-fg); font-weight: 600; }
+    .btn.danger { border-color: var(--bad); }
+    .dirty { color: var(--accent); font-size: 12px; white-space: nowrap; }
+
+    /* ------------------------------------------------------------ stage and pane */
+    #body { flex: 1 1 auto; display: flex; min-height: 0; }
+    #stage { flex: 1 1 auto; position: relative; overflow: hidden; min-width: 0; }
+    .editing #stage { background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px); background-size: var(--cw, 40px) var(--ch, 40px); background-color: var(--bg); }
+    #pane { flex: 0 0 var(--pane-w); border-left: 1px solid var(--line); background: var(--panel); display: none; flex-direction: column; min-height: 0; }
+    .editing #pane { display: flex; }
+    #pane section { padding: 10px 12px; border-bottom: var(--lw) var(--rule) var(--line); }
+    #pane h2 { margin: 0 0 8px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    #pane label { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 6px; color: var(--dim); }
+    #pane label.check { grid-template-columns: auto auto; justify-content: start; }
+    #pane input:not([type=checkbox]), #pane select { width: 100%; min-width: 0; padding: 4px 6px; }
+    #pane .row { display: flex; gap: 6px; flex-wrap: wrap; }
+    #pane .note { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+    #pane ol { margin: 4px 0 0; padding-left: 20px; color: var(--dim); }
+    #palette { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; border-bottom: 0 !important; }
+    #palette .filters { display: flex; gap: 6px; margin-bottom: 6px; }
+    #palette .filters input { flex: 3 1 0; } #palette .filters select { flex: 2 1 0; }
+    #items { flex: 1 1 auto; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+    .item { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 1px solid transparent; border-radius: var(--radius); padding: 3px 6px; cursor: pointer; }
+    .item:hover { border-color: var(--line); background: var(--panel-2); }
+    .item small { color: var(--dim); white-space: nowrap; }
+    #count { color: var(--dim); font-size: 12px; margin: 0 0 4px; }
+
+    /* ------------------------------------------------------------ grid */
+    .grid-stack-item-content { overflow: hidden !important; container-type: size; }
+    .grid-stack-item.sel > .grid-stack-item-content::before { content: ""; position: absolute; inset: 0; border: 3px solid var(--select); z-index: 2; pointer-events: none; }
+    .editing .grid-stack-item-content { cursor: move; }
+    .grid-stack-placeholder > .placeholder-content { background: color-mix(in srgb, var(--select) 15%, transparent) !important; border: 1px dashed var(--select); }
+    /* The service times the hold; this only draws it. */
+    .grid-stack-item-content.holding::after { content: ""; position: absolute; left: 0; bottom: 0; height: 6%; min-height: 3px; width: calc(var(--hold, 0) * 100%); background: var(--bad); pointer-events: none; }
+
+    /* A widget draws inside its own box; text scales with the box, never past it. */
+    .w { position: absolute; inset: 0; font-family: var(--font); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; user-select: none; }
+    .fit { display: block; flex: 0 0 auto; max-width: 100%; line-height: 1.05; white-space: nowrap; overflow: hidden; font-size: min(calc(var(--fh) * 1cqh), calc(var(--fw, 150) * 1cqw / var(--n))); }
+    .lbl { color: var(--dim); font-weight: var(--weight-label); letter-spacing: var(--tracking); text-transform: uppercase; }
+    .lbl::before { content: var(--title-pre); }
+    .lz { opacity: var(--lz); }
+    tspan.lz { opacity: 1; fill-opacity: var(--lz); }
+    [data-zeros="none"] .lz { display: none; }
+    .val { font-weight: var(--weight-value); }
+    .t-ok { color: var(--value); } .t-warn { color: var(--warn); } .t-bad { color: var(--bad); } .t-off { color: var(--off); } .t-unknown { color: var(--faint); } .t-info { color: var(--value); }
+    .panel { background: var(--panel); border: var(--lw) solid var(--line); border-radius: var(--radius); }
+    /* RSI: thin corner brackets on every panel. */
+    [data-base="rsi"] .panel { --bk: color-mix(in srgb, var(--fg) 45%, transparent); background:
+      linear-gradient(var(--bk), var(--bk)) left top / 12px var(--lw) no-repeat, linear-gradient(var(--bk), var(--bk)) left top / var(--lw) 12px no-repeat,
+      linear-gradient(var(--bk), var(--bk)) right top / 12px var(--lw) no-repeat, linear-gradient(var(--bk), var(--bk)) right top / var(--lw) 12px no-repeat,
+      linear-gradient(var(--bk), var(--bk)) left bottom / 12px var(--lw) no-repeat, linear-gradient(var(--bk), var(--bk)) left bottom / var(--lw) 12px no-repeat,
+      linear-gradient(var(--bk), var(--bk)) right bottom / 12px var(--lw) no-repeat, linear-gradient(var(--bk), var(--bk)) right bottom / var(--lw) 12px no-repeat,
+      var(--panel); }
+    .press { cursor: pointer; }
+    .editing .press { cursor: move; }
+
+    .readout { padding: 6cqh 6cqw; gap: 4cqh; border-left: var(--edge) solid var(--accent); }
+    .readout .lbl { --fh: 13; }
+    .readout .val { --fh: 42; }
+    .readout.bar .val { --fh: 36; }
+    .meter { width: 100%; height: max(4px, 9cqh); background: var(--lamp-off-bg); border: var(--lw) solid var(--line); display: flex; --c: var(--bar); }
+    .meter.t-warn { --c: var(--warn); } .meter.t-bad { --c: var(--bad); }
+    .meter > i { display: block; height: 100%; background: var(--c); }
+    /* Segments are sized by the widget, not the fill, so they stay put as the value moves. */
+    [data-bars="segmented"] .meter > i { background: repeating-linear-gradient(to right, var(--c) 0 calc(4cqw - 3px), transparent calc(4cqw - 3px) 4cqw); }
+
+    .lamp .face { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0 8%; border: var(--lw) solid var(--line); border-radius: var(--lamp-radius); }
+    .lamp.round .face { width: min(100cqw, 100cqh); height: min(100cqw, 100cqh); border-radius: 50%; padding: 0 16%; }
+    .lamp .fit { --fh: 52; --fw: 130; font-weight: var(--weight-value); letter-spacing: var(--tracking); }
+    .lamp.round .fit { font-size: min(calc(40 * 1cqmin), calc(95cqmin / var(--n))); }
+    .s-unknown .face { background: transparent; color: var(--faint); border-style: dashed; }
+    .s-off .face { background: var(--lamp-off-bg); color: var(--lamp-off-fg); }
+    .s-nominal .face { background: var(--lamp-nominal-bg); color: var(--lamp-nominal-fg); }
+    [data-base="rsi"] .s-nominal .face { border-color: color-mix(in srgb, var(--lamp-nominal-fg) 60%, transparent); }
+    .s-on .face { background: var(--lamp-on-bg); color: var(--lamp-on-fg); border-color: var(--lamp-on-fg); }
+    .s-minor .face, .s-minor-flash .face { background: var(--lamp-minor-bg); color: var(--lamp-minor-fg); border-color: var(--lamp-minor-fg); }
+    .s-major .face, .s-major-flash .face { background: var(--lamp-major-bg); color: var(--lamp-major-fg); border-color: var(--lamp-major-fg); }
+    .s-minor-flash .face, .s-major-flash .face { animation: flash 1s steps(1, end) infinite; }
+    @keyframes flash { 50% { background: var(--lamp-off-bg); color: var(--lamp-off-fg); border-color: var(--line); } }
+
+    .button { gap: 5cqh; padding: 6cqh 6cqw; }
+    .button .lbl { --fh: 15; }
+    .button .val { --fh: 28; }
+    .button .ind { width: 46%; height: max(3px, 5cqh); background: var(--lamp-off-bg); border: var(--lw) solid var(--line); }
+    .button.lit .ind { background: var(--select); border-color: var(--select); }
+    .button.round { border: 0; background: none; }
+    .button.round .disc { width: min(96cqw, 96cqh); height: min(96cqw, 96cqh); border-radius: 50%; background: var(--panel); border: var(--lw) solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4cqmin; padding: 10cqmin; }
+    .button.round .lbl, .button.round .val { font-size: min(calc(16 * 1cqmin), calc(70cqmin / var(--n))); }
+    .button.confirm { border-color: var(--bad); }
+    .button.round.confirm .disc { border-color: var(--bad); }
+    .tag { color: var(--bad); }
+
+    .mode { flex-direction: row; gap: 4cqmin; padding: 4cqmin; }
+    @container (aspect-ratio < 1) { .mode { flex-direction: column; } }
+    .mode .lbl { position: absolute; top: 2cqh; left: 0; right: 0; --fh: 12; display: none; }
+    .seg { flex: 1 1 0; align-self: stretch; display: flex; align-items: center; justify-content: center; border: var(--lw) solid var(--line); border-radius: var(--radius); background: var(--panel-2); color: var(--dim); container-type: size; padding: 0 6cqw; min-width: 0; min-height: 0; }
+    .seg .fit { --fh: 46; --fw: 120; font-weight: var(--weight-value); letter-spacing: var(--tracking); }
+    .seg.on { background: var(--select); border-color: var(--select); color: var(--select-fg); }
+
+    .strip { flex-direction: row; justify-content: flex-start; gap: 2cqw; padding: 0 1.5cqw; border-bottom: var(--edge) solid var(--accent); }
+    /* Drake: the ship name is the page title, in a filled bar between chevrons. */
+    [data-base="drake"] .strip { border-bottom-style: dashed; }
+    [data-base="drake"] .strip::before { content: var(--chev-l); color: var(--accent); font-size: 46cqh; font-weight: var(--weight-value); }
+    [data-base="drake"] .strip .ship { background: var(--title-bg); color: var(--title-fg); padding: 0 .6em; line-height: 1.25; }
+    .strip .ship { --fh: 54; --fw: 70; font-weight: var(--weight-value); letter-spacing: var(--tracking); text-transform: uppercase; flex: 0 1 auto; min-width: 0; }
+    .strip .spacer { flex: 1 1 auto; }
+    .strip .run { --fh: 40; --fw: 40; color: var(--warn); flex: 0 1 auto; min-width: 0; }
+    .pill { flex: 0 0 auto; display: flex; align-items: center; height: 64cqh; padding: 0 1.4em; border-radius: 999px; background: var(--off); color: var(--fg); font-weight: var(--weight-value); font-size: min(30cqh, 2.2cqw); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; }
+    .pill.live { background: var(--ok); color: var(--bg); } .pill.waiting { background: var(--warn); color: var(--bg); }
+    .pill.rec { background: var(--bad); color: var(--bg); padding: 0 .8em; }
+    [data-base="drake"] .pill { border-radius: 0; background: transparent; border: var(--lw) solid currentColor; color: var(--off); }
+    [data-base="drake"] .pill.live { color: var(--ok); } [data-base="drake"] .pill.waiting { color: var(--warn); }
+    [data-base="drake"] .pill.rec { background: transparent; color: var(--bad); }
+
+    .missing { color: var(--bad); }
+
+    /* Drawn widgets: the SVG keeps its own aspect inside the box and centres. */
+    .drawn { gap: 3cqh; padding: 5cqh 5cqw; }
+    .drawn .lbl { --fh: 11; }
+    .drawn .val { --fh: 13; }
+    .lever .val, .sw .val { --fh: 9; }
+    .drawn > svg { flex: 1 1 0; min-height: 0; width: 100%; overflow: visible; }
+    svg text { font-family: var(--font); font-weight: var(--weight-label); letter-spacing: .04em; }
+    .plate { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; rx: var(--plate-r); }
+    .screw { fill: var(--bg); stroke: var(--faint); }
+    .mark { fill: var(--dim); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+    .slot { fill: var(--bg); stroke: var(--faint); }
+    .mark.lit { fill: var(--fg); }
+
+    /* Light switch: the bat flips about its nut. */
+    .sw .bat { transform-box: view-box; transform-origin: 30px 52px; }
+    .sw .s-off-bat { transform: scaleY(-1); }
+    .sw .bat.from-on, .sw .bat.from-off, .sw .bat.from-unknown { animation: .22s ease-out both bat-flip; }
+    .sw .bat.from-on { --from: 1; } .sw .bat.from-off, .sw .bat.from-unknown { --from: -1; }
+    @keyframes bat-flip { from { transform: scaleY(var(--from)); } }
+    .sw .nut { fill: color-mix(in srgb, var(--dim) 75%, var(--bg)); stroke: var(--faint); stroke-width: 1.5; }
+    .sw .tip { fill: color-mix(in srgb, var(--fg) 80%, var(--dim)); stroke: var(--faint); stroke-width: 1.5; }
+    .sw.s-unknown .nut { fill: none; stroke: var(--faint); stroke-dasharray: 4 3; }
+
+    /* Gear lever: the wheel knob slides along the slot; it glows while the gear is moving. */
+    .lever .handle { transform-box: view-box; }
+    .lever .handle.at-down { transform: translateY(84px); }
+    .lever .handle.at-mid { transform: translateY(42px); }
+    .lever .handle.from-up { animation: .5s cubic-bezier(.3, 0, .2, 1) both lever-from-up; }
+    .lever .handle.from-down { animation: .5s cubic-bezier(.3, 0, .2, 1) both lever-from-down; }
+    .lever .handle.from-mid { animation: .5s cubic-bezier(.3, 0, .2, 1) both lever-from-mid; }
+    @keyframes lever-from-up { from { transform: translateY(0); } }
+    @keyframes lever-from-down { from { transform: translateY(84px); } }
+    @keyframes lever-from-mid { from { transform: translateY(42px); } }
+    .lever .tire { fill: var(--panel-2); stroke: color-mix(in srgb, var(--fg) 75%, var(--dim)); stroke-width: 4; }
+    .lever .hub { fill: var(--dim); }
+    .lever .arm { fill: var(--dim); stroke: var(--faint); }
+    .lever .moving .tire { fill: var(--lamp-minor-bg); stroke: var(--warn); animation: knob-glow 1s steps(1, end) infinite; }
+    .lever .moving .hub { fill: var(--warn); }
+    @keyframes knob-glow { 50% { stroke: var(--lamp-minor-fg); fill: color-mix(in srgb, var(--lamp-minor-bg) 60%, var(--bg)); } }
+    .lever .s-unknown-knob .tire, .lever .s-unknown-knob .hub, .lever .s-unknown-knob .arm { fill: none; stroke: var(--faint); stroke-dasharray: 4 3; }
+    .lever .stripe { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6 5; opacity: .5; }
+
+    /* Push button: a cap in a housing, with a ring that lights while the sequence runs. */
+    .push .housing { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
+    .push .collar { fill: var(--bg); stroke: var(--faint); stroke-width: 1.5; }
+    .push .ring { fill: none; stroke: var(--lamp-off-fg); stroke-width: 4; }
+    .push.lit .ring { stroke: var(--warn); }
+    .push.done .ring { stroke: var(--ok); }
+    .push.failed .ring { stroke: var(--bad); }
+    .push .cap { fill: color-mix(in srgb, var(--panel-2) 60%, var(--dim)); stroke: var(--dim); stroke-width: 2; transform-box: fill-box; transform-origin: center; transition: transform .08s; }
+    .push .cap-hi { fill: none; stroke: var(--faint); stroke-width: 2; pointer-events: none; }
+    .push .housing, .push .cap { rx: var(--plate-r); }
+    .push:active .cap { transform: scale(.93); }
+    .editing .push:active .cap { transform: none; }
+
+    /* Shields: faces around a plain outline; faces are numbered until the game says which is which. */
+    .shields { padding: 3cqmin; }
+    .shields > svg { width: 100%; height: 100%; }
+    .hull { fill: var(--panel-2); stroke: var(--dim); stroke-width: 1.5; stroke-linejoin: round; }
+    .track { fill: none; stroke: var(--lamp-off-bg); stroke-width: 10; }
+    .track.none { stroke: var(--faint); stroke-width: 2; stroke-dasharray: 5 4; }
+    .face-arc { fill: none; stroke-width: 10; stroke: var(--bar); }
+    .face-arc.t-warn { stroke: var(--warn); } .face-arc.t-bad { stroke: var(--bad); }
+    .face-pct { fill: var(--value); font-size: 17px; font-weight: var(--weight-value); dominant-baseline: middle; }
+    .face-pct.t-unknown { fill: var(--faint); }
+    .face-num { fill: var(--dim); font-size: 10px; text-anchor: middle; dominant-baseline: middle; }
+    .face-badge { fill: var(--bg); stroke: var(--line); }
+    .tot-lbl { fill: var(--dim); font-size: 11px; letter-spacing: .1em; }
+    .tot-val { fill: var(--value); font-size: 22px; font-weight: var(--weight-value); }
+    .tot-val.t-unknown { fill: var(--faint); }
+
+    /* Fuel: tall segmented bars, as on the Self Status page. */
+    .fuel { padding: 4cqmin; }
+    .fuel > svg { width: 100%; height: 100%; }
+    .fuel .frame { fill: var(--lamp-off-bg); stroke: var(--line); stroke-width: 1.5; }
+    .fuel .frame.none { fill: none; stroke: var(--faint); stroke-dasharray: 4 3; }
+    svg .seg-on { fill: var(--bar); } svg .t-warn > .seg-on { fill: var(--warn); } svg .t-bad > .seg-on { fill: var(--bad); }
+    svg .seg-off { fill: color-mix(in srgb, var(--line) 45%, var(--lamp-off-bg)); }
+    .fuel .tick { stroke: var(--faint); stroke-width: 1; }
+    .fuel .tick-lbl { fill: var(--dim); font-size: 8px; dominant-baseline: middle; }
+    .fuel .f-val { fill: var(--value); font-size: 17px; font-weight: var(--weight-value); text-anchor: middle; }
+    .fuel .f-val.t-unknown { fill: var(--faint); }
+    .fuel .f-lbl { fill: var(--dim); font-size: 10px; letter-spacing: .1em; text-anchor: middle; }
+
+    /* Lists (power, weapons, configuration) fill their box; their text scales with its height. */
+    .list { align-items: stretch; justify-content: flex-start; padding: 3cqh 3cqw; gap: 2cqh; text-align: left; }
+    .list .fit { font-size: inherit; }
+    .list .grow { flex: 1 1 auto; min-width: 0; }
+    .lock { width: .8em; height: .8em; flex: 0 0 auto; fill: none; stroke: var(--faint); stroke-width: 2.5; }
+    .pwr-icon { width: 1em; height: 1em; flex: 0 0 auto; fill: none; stroke-width: 2.6; stroke-linecap: round; }
+
+    .power .cols { flex: 1 1 0; min-height: 0; display: flex; gap: 1.2cqw; }
+    .power .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2cqh; font-size: min(7cqh, calc(100cqw / var(--cols) / 3.6)); }
+    .power .cbar { flex: 1 1 0; width: 64%; min-height: 0; border: var(--lw) solid var(--line); background: var(--lamp-off-bg); }
+    .power .s-on .cbar { background: var(--bar); border-color: var(--dim); }
+    [data-bars="segmented"] .power .s-on .cbar { background: repeating-linear-gradient(to top, var(--bar) 0 calc(12.5% - 3px), var(--lamp-off-bg) calc(12.5% - 3px) 12.5%); }
+    .power .s-off .cbar { border-color: var(--bad); background: repeating-linear-gradient(135deg, var(--lamp-major-bg) 0 6px, var(--lamp-off-bg) 6px 12px); }
+    .power .s-unknown .cbar { border-style: dashed; border-color: var(--faint); background: none; }
+    .power .cl { font-weight: var(--weight-label); color: var(--dim); letter-spacing: var(--tracking); text-align: center; flex: 0 0 auto; }
+    .power .cv { flex: 0 0 2.4em; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; font-weight: var(--weight-value); border: var(--lw) solid transparent; border-radius: var(--radius); }
+    .power .cv .lock { width: .7em; height: .7em; margin-top: .15em; }
+    .power .press .cv { border-color: var(--line); background: var(--panel-2); }
+    .power .press:hover .cv { border-color: var(--accent); }
+    .power .s-on .cv { color: var(--value); } .power .s-off .cv { color: var(--bad); } .power .s-unknown .cv { color: var(--faint); }
+    .power .note { flex: 0 0 auto; color: var(--dim); font-size: min(6cqh, 2.6cqw); text-align: center; }
+
+    .weapons { font-size: min(calc(70cqh / (var(--rows) + 3)), 5cqw); gap: 0; }
+    .weapons .whead { display: flex; align-items: baseline; gap: .6em; padding-bottom: .25em; border-bottom: var(--lw) var(--rule) var(--line); }
+    .weapons .preset { font-size: 1.25em; font-weight: var(--weight-value); text-transform: uppercase; letter-spacing: var(--tracking); }
+    .weapons .cols-h, .weapons .wrow { display: grid; grid-template-columns: .3em minmax(0, 1fr) 2.2em 2.2em; align-items: center; gap: .5em; }
+    .weapons .cols-h { color: var(--dim); letter-spacing: .1em; padding-top: .3em; }
+    .weapons .cols-h span { font-size: .7em; }
+    .weapons .cols-h span:nth-child(n+3) { text-align: center; }
+    .weapons .wrows { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+    .weapons .wrow { flex: 1 1 0; min-height: 0; max-height: 2.2em; border-bottom: var(--lw) dashed var(--line); }
+    .weapons .wrow > .edge { align-self: stretch; margin: .25em 0; background: var(--fg); }
+    [data-base="drake"] .weapons .wrow > .edge { background: none; }
+    .weapons .wname { font-weight: var(--weight-value); text-transform: uppercase; letter-spacing: var(--tracking); }
+    .weapons .cell { display: flex; justify-content: center; }
+    .pwr-icon.on { stroke: var(--value); } .pwr-icon.off { stroke: var(--off); } .pwr-icon.unknown { stroke: var(--faint); stroke-dasharray: 3 3; }
+    .rdy { width: .9em; height: .9em; border: 2px solid var(--off); border-radius: var(--radius); }
+    .rdy.on { background: var(--accent); border-color: var(--accent); } .rdy.unknown { border-style: dashed; border-color: var(--faint); }
+    .weapons .more, .weapons .none { color: var(--dim); font-size: .8em; padding: .3em 0; }
+    .weapons .wcm { display: flex; gap: 1.2em; padding-top: .3em; border-top: var(--lw) var(--rule) var(--line); }
+    .weapons .wcm b { font-weight: var(--weight-value); margin-left: .3em; color: var(--value); }
+    .weapons .wcm span { color: var(--dim); letter-spacing: .08em; }
+
+    .config .clist { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; --r: var(--rn); font-size: calc(58cqh / var(--r)); }
+    @container (aspect-ratio > 1.15) { .config .clist { flex-direction: row; gap: 4cqw; --r: var(--rw); } }
+    .config .ccol { display: flex; flex-direction: column; flex: var(--k) 1 0; min-height: 0; min-width: 0; }
+    @container (aspect-ratio > 1.15) { .config .ccol { flex: 1 1 0; } .config .ccol > .cgrp, .config .ccol > .crow { flex: 0 0 calc(100% / var(--rw)); } }
+    .config .cgrp, .config .crow { flex: 1 1 0; min-height: 0; display: flex; align-items: center; gap: .5em; }
+    .config .cgrp { color: var(--accent); font-weight: var(--weight-label); letter-spacing: .12em; font-size: .8em; text-transform: uppercase; border-bottom: var(--lw) var(--rule) var(--line); }
+    .config .cgrp::before { content: var(--title-pre); }
+    .config .crow { padding: 0 .3em; border: var(--lw) solid transparent; border-radius: var(--radius); }
+    .config .crow.press:hover { border-color: var(--accent); }
+    .config .crow.press .box { box-shadow: 0 0 0 1px var(--dim); }
+    .config .box { width: .9em; height: .9em; flex: 0 0 auto; border: 2px solid var(--off); border-radius: var(--radius); }
+    .config .s-on .box { background: var(--select); border-color: var(--select); }
+    .config .s-unknown .box { border-style: dashed; border-color: var(--faint); }
+    .config .s-unknown .cl { color: var(--faint); }
+
+    #empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--dim); font-size: 15px; padding: 16px; text-align: center; }
+
+    /* ------------------------------------------------------------ dialog and notice */
+    dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-top: var(--edge) solid var(--accent); border-radius: var(--radius); padding: 16px 18px; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+    dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); }
+    dialog h3 { margin: 0 0 10px; font: var(--weight-value) 16px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; }
+    dialog .body p { margin: 0 0 8px; }
+    dialog ul { margin: 0 0 8px; padding-left: 18px; color: var(--dim); max-height: 40vh; overflow-y: auto; }
+    dialog .warn { color: var(--warn); }
+    dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    #notice { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line); display: none; max-width: min(420px, calc(100vw - 32px)); z-index: 10; }
+    #notice.bad { border-color: var(--bad); } #notice.ok { border-color: var(--ok); }
+
+    /* ------------------------------------------------------------ detach, kiosk and bezel */
+    #pane #props { flex: 0 0 auto; overflow-y: auto; max-height: 62%; }
+    #pane h2.sub { margin-top: 14px; }
+    #pane ul.maps { margin: 4px 0 6px; padding: 0; list-style: none; color: var(--fg); }
+    #pane ul.maps li { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed var(--line); min-width: 0; }
+    #pane ul.maps b { flex: 0 0 auto; color: var(--accent); font-weight: 600; min-width: 2.4em; }
+    #pane ul.maps span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .screens { display: grid; gap: 6px; margin: 8px 0; }
+    .screen { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); cursor: pointer; }
+    .screen:has(input:checked) { border-color: var(--select); }
+    .screen input { grid-row: span 2; }
+    .screen b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .screen small { color: var(--dim); grid-column: 2; }
+    dialog label.check { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+    dialog .list { list-style: none; padding: 0; color: var(--fg); }
+    dialog .list li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+    dialog .list small { color: var(--dim); text-align: right; }
+    dialog .list .bad { color: var(--warn); }
+
+    body.kiosk.idle, body.kiosk.idle * { cursor: none !important; }
+    .overlay { position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-top: var(--edge) solid var(--accent); border-radius: var(--radius); padding: 14px 16px; }
+    .overlay[hidden] { display: none; }
+    .overlay h3 { margin: 0 0 10px; font: var(--weight-value) 15px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; }
+    .overlay .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .overlay .note { color: var(--dim); font-size: 12px; margin: 6px 0 0; }
+    #kiosk-menu { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); }
+    #kiosk-menu .row { flex-direction: column; }
+    #fs-prompt { inset: 0; border: 0; border-radius: 0; background: color-mix(in srgb, var(--bg) 85%, transparent); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: pointer; font: 600 22px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; text-align: center; padding: 16px; }
+    #fs-prompt[hidden] { display: none; }
+    #fs-prompt small { font: 13px var(--font-ui); color: var(--dim); text-transform: none; letter-spacing: 0; }
+    #exit-hint { position: fixed; left: 8px; top: 8px; z-index: 21; width: 120px; height: 4px; background: var(--lamp-off-bg); display: none; }
+    #exit-hint i { display: block; height: 100%; background: var(--accent); width: 0; }
+    #hold-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 21; width: min(360px, calc(100vw - 32px)); padding: 8px 12px; background: var(--panel); border: 1px solid var(--bad); border-radius: var(--radius); font: 600 13px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; }
+    #hold-bar[hidden] { display: none; }
+    #hold-bar .meter { margin-top: 6px; height: 6px; }
+    #hold-bar .meter > i { background: var(--bad); }
+
+    #bezel-panel { right: 16px; top: 16px; bottom: 16px; width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; min-height: 0; }
+    #bezel-panel[hidden] { display: none; }
+    body:not(.kiosk) #bezel-panel { top: var(--bar-h); right: 0; bottom: 0; border-radius: 0; }
+    #bezel-panel .pad { color: var(--dim); margin: 0 0 8px; overflow-wrap: anywhere; }
+    #bezel-panel .pad b { color: var(--fg); font-weight: 600; }
+    #bezel-panel .learn { border: 1px solid var(--select); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; background: var(--panel-2); }
+    #bezel-panel .learn.wait { border-style: dashed; border-color: var(--line); color: var(--dim); text-align: center; padding: 14px 10px; }
+    #bezel-panel .learn label { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 6px; color: var(--dim); }
+    #bezel-panel .learn select, #bezel-panel .learn input { width: 100%; min-width: 0; padding: 4px 6px; }
+    #bezel-panel .learn .big { color: var(--accent); font: 600 15px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; }
+    #bezel-panel .maps { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+    #bezel-panel .map { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border: 1px solid transparent; border-radius: var(--radius); }
+    #bezel-panel .map.on { border-color: var(--select); background: var(--panel-2); }
+    #bezel-panel .map b { color: var(--accent); font-weight: 600; }
+    #bezel-panel .map .what { min-width: 0; display: flex; flex-direction: column; }
+    #bezel-panel .map .what span { overflow-wrap: anywhere; }
+    #bezel-panel .map .what small { color: var(--dim); overflow-wrap: anywhere; }
+    #bezel-panel .map .acts { display: flex; gap: 4px; }
+    #bezel-panel .map .btn { padding: 2px 8px; }
+    #bezel-panel .empty { color: var(--dim); padding: 8px 0; }
+
+    #theme-panel { right: 16px; top: 16px; bottom: 16px; width: min(600px, calc(100vw - 32px)); display: flex; flex-direction: column; min-height: 0; gap: 6px; }
+    #theme-panel[hidden] { display: none; }
+    body:not(.kiosk) #theme-panel { top: var(--bar-h); right: 0; bottom: 0; border-radius: 0; }
+    /* While the editor is open the stage makes room for it, so the whole tab shows the theme. */
+    body.theming #pane { display: none; }
+    body.theming:not(.kiosk) #stage { margin-right: min(600px, calc(100vw - 32px)); }
+    #theme-panel h3 { margin-bottom: 4px; }
+    #theme-panel .note { margin: 0; }
+    #theme-panel .tlist { flex: 0 1 auto; max-height: 30%; overflow-y: auto; display: grid; gap: 2px; min-height: 0; }
+    #theme-panel .trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
+    #theme-panel .trow:hover { border-color: var(--line); }
+    #theme-panel .trow.on { border-color: var(--select); background: var(--panel-2); }
+    #theme-panel .trow .what { min-width: 0; display: flex; flex-direction: column; }
+    #theme-panel .trow b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #theme-panel .trow small { color: var(--dim); overflow-wrap: anywhere; }
+    #theme-panel .acts { display: flex; gap: 4px; }
+    #theme-panel .acts .btn { padding: 2px 8px; }
+    #theme-panel .ted { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: var(--lw) var(--rule) var(--line); padding-top: 8px; }
+    #theme-panel .ted > label { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; align-items: center; margin-bottom: 6px; color: var(--dim); }
+    #theme-panel .ted > label span { color: var(--fg); display: flex; gap: 8px; align-items: center; }
+    #theme-panel input:not([type=checkbox]):not([type=color]), #theme-panel select { width: 100%; min-width: 0; padding: 4px 6px; }
+    #theme-panel .colors { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin: 8px 0; }
+    #theme-panel .col { display: grid; grid-template-columns: minmax(0, 1fr) 30px 86px; gap: 6px; align-items: center; color: var(--dim); }
+    #theme-panel .col span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #theme-panel input[type=color] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
+    #theme-panel input.hex { font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+    #theme-panel input.hex.bad { border-color: var(--bad); outline-color: var(--bad); color: var(--bad); }
+    #theme-panel .row { display: flex; gap: 6px; flex-wrap: wrap; }
+    #theme-panel .row.end { justify-content: flex-end; }
+
+    /* ------------------------------------------------------------ greyed controls and the dashboard picker */
+    /* A control for a function the ship lacks: dimmed and hatched, still there and still clickable. */
+    .gwrap { position: absolute; inset: 0; }
+    .gwrap > .w { opacity: .38; filter: grayscale(1); }
+    .gwrap::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--faint) 35%, transparent) 7px 9px); }
+    .gwrap .gmark { position: absolute; right: 3px; top: 3px; z-index: 2; padding: 1px 5px; max-width: calc(100% - 6px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+      font: 700 min(11px, 24cqh) var(--font); letter-spacing: var(--tracking); color: var(--fg); background: var(--panel); border: 1px dashed var(--dim); border-radius: var(--radius); }
+    .gwrap .gtip { display: none; position: absolute; left: 4px; right: 4px; bottom: 4px; z-index: 3; padding: 4px 6px; pointer-events: none; text-align: left;
+      font: 12px/1.3 var(--font-ui); color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+    .gwrap:hover .gtip { display: block; }
+    /* A box too small for the mark keeps the hatching and the tooltip. */
+    @container (max-height: 34px) { .gwrap .gmark { display: none; } }
+    @container (max-width: 150px) { .gwrap.g-absent .gmark { display: none; } }
+    .ghide { visibility: hidden; }
+    .config .crow.greyed { opacity: .42; }
+    .config .crow.greyed .cl { text-decoration: line-through; text-decoration-color: var(--dim); }
+    .btn.board { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+    #dash-panel { top: calc(var(--bar-h) + 8px); right: 8px; width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - var(--bar-h) - 16px); overflow-y: auto; font-family: var(--font-ui); }
+    #dash-panel section { border-top: var(--lw) var(--rule) var(--line); padding: 8px 0 6px; }
+    #dash-panel h4 { margin: 0 0 6px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    #dash-panel h4::before { content: var(--title-pre); }
+    #dash-panel .ship { margin: 0 0 6px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    #dash-panel .ship b { font: var(--weight-value) 15px var(--font); letter-spacing: var(--tracking); }
+    #dash-panel .ship small, #dash-panel .drow small { color: var(--dim); }
+    #dash-panel .make { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    #dash-panel .make label { display: flex; gap: 6px; align-items: center; color: var(--dim); }
+    #dash-panel .dlist { display: grid; gap: 4px; }
+    #dash-panel .drow { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+    #dash-panel .drow.on { border-color: var(--select); background: var(--panel-2); }
+    #dash-panel .drow .what { display: grid; min-width: 0; flex: 1 1 auto; gap: 2px; }
+    #dash-panel .drow .what b, #dash-panel .drow .what small { overflow-wrap: anywhere; }
+    #dash-panel .drow input { width: 100%; }
+    #dash-panel .acts { display: flex; gap: 4px; flex: 0 0 auto; align-items: center; }
+    #dash-panel .acts .btn { padding: 2px 8px; }
+    #dash-panel .here { color: var(--select); font-size: 12px; padding: 0 6px; white-space: nowrap; }
+    #dash-panel label.check { display: flex; gap: 8px; align-items: center; }
+    #dash-panel .warn, .cwarn { color: var(--warn); }
+    .cwarn ul { margin: 2px 0 6px; padding-left: 18px; }
+    .cwarn:empty { display: none; }
+    #dash-panel .row.end { justify-content: flex-end; }
+
+    /* ------------------------------------------------------------ fleet panel (Rust service only, draft) */
+    body { --fleet-w: 380px; }
+    @media (max-width: 1280px) { body { --fleet-w: 320px; } }
+    #fleet { flex: 0 0 var(--fleet-w); width: var(--fleet-w); display: none; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); font-family: var(--font); }
+    body.fleet-on:not(.editing):not(.theming) #fleet { display: flex; }
+    .demo-flag { flex: 0 0 auto; align-self: center; padding: 3px 8px; border: 1px solid var(--warn); border-radius: var(--radius); background: var(--lamp-minor-bg); color: var(--lamp-minor-fg); font: 700 11px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; }
+    .btn.on { border-color: var(--select); color: var(--select); }
+    #fleet .fhead { flex: 0 0 auto; padding: 8px 10px; border-bottom: var(--lw) var(--rule) var(--line); display: grid; gap: 6px; }
+    #fleet .ftitle { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    #fleet .ftitle h2 { margin: 0; font: var(--weight-value) 15px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; color: var(--fg); white-space: nowrap; }
+    #fleet .ftitle h2::before { content: var(--title-pre); }
+    #fleet .froll { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+    #fleet .ftitle .x { margin-left: auto; padding: 0 8px; }
+    #fleet .demo-flag { align-self: stretch; text-align: center; }
+    #fleet .ftools { display: flex; gap: 4px; flex-wrap: wrap; }
+    #fleet .ftools .btn { padding: 3px 8px; font-size: 12px; }
+    #fleet .fbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    #fleet .fempty { color: var(--dim); padding: 12px 10px; }
+    .fgroup { border-bottom: var(--lw) var(--rule) var(--line); }
+    .fgroup.drop { outline: 2px dashed var(--select); outline-offset: -2px; }
+    .fgroup-h { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 6px; align-items: center; padding: 6px 8px; background: var(--panel-2); }
+    .fgroup-h .chev { background: none; border: 0; padding: 0 4px; cursor: pointer; color: var(--dim); width: 20px; }
+    .fgroup-h .name { font-weight: var(--weight-label); letter-spacing: var(--tracking); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fgroup-h .name::before { content: var(--title-pre); color: var(--dim); }
+    .fgroup-h .acts { display: flex; gap: 2px; }
+    .fgroup-h .acts .btn { padding: 0 6px; font-size: 12px; line-height: 18px; }
+    .fgroup-h .roll { grid-column: 2 / 4; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fgroup-h .roll b { color: var(--bad); font-weight: 600; }
+    .fcards { display: grid; gap: 6px; padding: 6px 8px 8px; }
+    .fcards .hint { color: var(--faint); font-size: 12px; padding: 4px 2px; }
+    .fcard { border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: var(--radius); background: var(--bg); padding: 6px 8px; cursor: pointer; display: grid; gap: 3px; min-width: 0; }
+    .fcard:hover { border-color: var(--accent); border-left-color: var(--st); }
+    .fcard.dragging { opacity: .4; }
+    .fcard.sel, .arow.sel { outline: 2px solid var(--select); outline-offset: -1px; background: var(--panel-2); }
+    [data-st] { --st: var(--ok); }
+    [data-st="DOWNED"] { --st: var(--bad); } [data-st="DEAD"] { --st: var(--lamp-major-fg); } [data-st="RESPAWNED"] { --st: var(--warn); }
+    [data-st="OFFLINE"] { --st: var(--off); } [data-st="UNKNOWN"] { --st: var(--dim); }
+    .fcard[data-st="OFFLINE"] { opacity: .55; filter: grayscale(1); }
+    .fcard[data-st="DOWNED"], .arow[data-st="DOWNED"] { animation: fdown 1s steps(1) infinite; }
+    @keyframes fdown { 50% { background: color-mix(in srgb, var(--bad) 22%, var(--bg)); } }
+    .frow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .frow .who { font-weight: var(--weight-value); letter-spacing: .02em; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .frow .sub { color: var(--dim); font-size: 12px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .frow .tag { color: var(--dim); font-size: 12px; white-space: nowrap; flex: 0 0 auto; }
+    .chip { flex: 0 0 auto; padding: 1px 6px; border: 1px solid var(--line); border-radius: var(--lamp-radius); font: 700 11px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; background: var(--lamp-nominal-bg); color: var(--lamp-nominal-fg); }
+    .chip[data-st="UP"] { background: var(--lamp-on-bg); color: var(--lamp-on-fg); border-color: var(--lamp-on-fg); }
+    .chip[data-st="DOWNED"] { background: var(--lamp-major-bg); color: var(--lamp-major-fg); border-color: var(--lamp-major-fg); }
+    .chip[data-st="DEAD"] { background: var(--lamp-off-bg); color: var(--lamp-major-fg); border-color: var(--lamp-major-fg); border-style: dashed; }
+    .chip[data-st="RESPAWNED"] { background: var(--lamp-minor-bg); color: var(--lamp-minor-fg); border-color: var(--lamp-minor-fg); }
+    .chip[data-st="OFFLINE"] { background: var(--lamp-off-bg); color: var(--lamp-off-fg); }
+    .fbars { display: grid; grid-template-columns: 3.2em minmax(0, 1fr) 2.9em 3.2em minmax(0, 1fr) 2.9em; gap: 2px 5px; align-items: center; font-size: 12px; }
+    .fbars .l { color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fbars .v { text-align: right; font-weight: var(--weight-value); white-space: nowrap; }
+    .fbar { height: 7px; background: var(--lamp-off-bg); border: var(--lw) solid var(--line); display: flex; --c: var(--bar); }
+    .fbar.t-warn { --c: var(--warn); } .fbar.t-bad { --c: var(--bad); } .fbar.t-unknown { border-style: dashed; }
+    .fbar > i { display: block; height: 100%; background: var(--c); }
+    [data-bars="segmented"] .fbar > i { background: repeating-linear-gradient(to right, var(--c) 0 5px, transparent 5px 7px); }
+    .ffacts { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+    .ffacts span { white-space: nowrap; } .ffacts small { color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); font-size: 11px; margin-right: 4px; }
+    .fage { color: var(--faint); font-size: 11px; text-align: right; }
+    .fcard[data-st="OFFLINE"] .fage { color: var(--off); }
+    /* Admiral view: one compact row per member, by state across groups. */
+    .alist { display: grid; gap: 4px; padding: 8px; }
+    .arow { display: grid; grid-template-columns: 7.6em minmax(0, 1fr) 4.4em 3.4em; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: var(--radius); background: var(--bg); cursor: pointer; font-size: 13px; min-width: 0; }
+    .arow .chip { font-size: 12px; padding: 2px 6px; }
+    .arow .chip { text-align: center; }
+    .arow .who { min-width: 0; display: flex; flex-direction: column; }
+    .arow .who b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arow .who small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arow .hp { display: grid; gap: 2px; text-align: right; }
+    .arow .age { color: var(--faint); text-align: right; white-space: nowrap; font-size: 12px; }
+    .arow[data-st="OFFLINE"] { opacity: .55; }
+    .ahead { display: flex; gap: 12px; flex-wrap: wrap; padding: 10px 8px 0; font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); }
+    .ahead b { color: var(--fg); }
+    /* The detail view and the card fields, beside the panel. */
+    #fleet-detail, #fleet-fields { top: calc(var(--bar-h) + 8px); right: calc(var(--fleet-w) + 8px); width: min(460px, calc(100vw - var(--fleet-w) - 32px)); max-height: calc(100vh - var(--bar-h) - 16px); overflow-y: auto; font-family: var(--font); }
+    #fleet-detail .dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    #fleet-detail .dhead h3 { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #fleet-detail section { border-top: var(--lw) var(--rule) var(--line); padding: 8px 0 4px; }
+    #fleet-detail h4, #fleet-fields h4 { margin: 0 0 6px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    #fleet-detail h4::before, #fleet-fields h4::before { content: var(--title-pre); }
+    #fleet-detail .fbars { font-size: 13px; grid-template-columns: 7.5em minmax(0, 1fr) 3.4em; gap: 4px 8px; }
+    #fleet-detail .fbar { height: 9px; }
+    #fleet-detail .kv { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 3px 8px; font-size: 13px; }
+    #fleet-detail .kv span:nth-child(odd) { color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); font-size: 12px; }
+    #fleet-detail .lamps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+    #fleet-detail .lamps span { padding: 3px 4px; text-align: center; border: 1px solid var(--line); border-radius: var(--lamp-radius); font-size: 11px; letter-spacing: var(--tracking); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #fleet-detail .lamps .t-ok { background: var(--lamp-on-bg); color: var(--lamp-on-fg); }
+    #fleet-detail .lamps .t-off { background: var(--lamp-off-bg); color: var(--lamp-off-fg); }
+    #fleet-detail .note, #fleet-fields .note { color: var(--dim); font-size: 12px; margin: 4px 0; }
+    #fleet-detail label, #fleet-fields label { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+    #fleet-detail select { padding: 3px 6px; min-width: 0; flex: 1 1 auto; }
+    #fleet-fields .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
+    @media (max-width: 700px) {
+      body { --pane-w: 100%; --bar-h: 40px; }
+      .editing #stage { display: none; }
+    }
+  </style>
+</head>
+<body data-theme="rsi" data-base="rsi" data-font="condensed" data-bars="segmented" data-zeros="dim">
+  <div id="app">
+    <header id="bar">
+      <nav id="tabs"></nav>
+      <div class="tools" id="tools"></div>
+    </header>
+    <div id="body">
+      <main id="stage"><div id="empty"></div></main>
+      <aside id="fleet" aria-label="Fleet"></aside>
+      <aside id="pane">
+        <section id="props" data-accept="[data-do=save]"></section>
+        <section id="palette">
+          <h2>Add widget</h2>
+          <div class="filters">
+            <input id="q" type="search" placeholder="search, e.g. speed, gear" data-accept="blur" />
+            <select id="cat"></select>
+          </div>
+          <p id="count"></p>
+          <div id="items"></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+  <dialog id="dlg" data-accept="#dlg-buttons .primary"><h3 id="dlg-title"></h3><div class="body" id="dlg-body"></div><div class="row" id="dlg-buttons"></div></dialog>
+  <input type="file" id="file" accept=".json,application/json" hidden />
+  <div id="notice"></div>
+  <div id="kiosk-menu" class="overlay" hidden></div>
+  <div id="fs-prompt" hidden>Tap or click once for full screen<small>F11 also works. Hold Escape for 2 s for the kiosk menu.</small></div>
+  <div id="exit-hint"><i></i></div>
+  <div id="hold-bar" hidden><span id="hold-text"></span><div class="meter"><i></i></div></div>
+  <div id="bezel-panel" class="overlay" hidden data-accept="[data-b=save]"></div>
+  <div id="theme-panel" class="overlay" hidden data-accept="[data-th-do=save]"></div>
+  <div id="dash-panel" class="overlay" hidden data-accept="[data-dp=rename-ok]"></div>
+  <div id="fleet-detail" class="overlay" hidden></div>
+  <div id="fleet-fields" class="overlay" hidden></div>
+
+  <script src="/vendor/gridstack/gridstack-all.js"></script>
+  <script>
+    const TOKEN = '__TOKEN__';
+    // A little over the service's 1.5 s, which it times from hold.start, so a hold never lands just short.
+    const HOLD_MS = 1550;
+    const MAX_IMPORT = 512 * 1024;
+    const DASH = '—';
+    const PARAMS = new URLSearchParams(location.search);
+    const ONLY = PARAMS.get('tab');
+    // A detached tab: use mode only, no bar, the cursor hidden when idle, bezel buttons live.
+    const KIOSK = Boolean(ONLY) && PARAMS.get('kiosk') === '1';
+    const WANT_FS = KIOSK && PARAMS.get('fs') === '1';
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+
+    let ws, nextId = 1;
+    const waiting = new Map();
+    let dash = null, meta = null, cat = null, vals = null;
+    let currentId = ONLY, editing = false, work = null, selected = null, builtFor = '';
+    let grid = null;
+    const seqResults = new Map();
+    let themes = null, themeDraft = null;
+    // Per-ship dashboards (Rust service): the one on screen, the list, and the generic dashboard while a ship's is shown.
+    let board = null, boards = null, genericBoard = null, dashPanel = false, renamingBoard = null, shownProblem = false;
+
+    // ------------------------------------------------------------ connection
+
+    function connect() {
+      ws = new WebSocket(`ws://${location.host}/portal`);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'hello', token: TOKEN, client: KIOSK ? 'dash-kiosk' : ONLY ? 'dash-tab' : 'dash' }));
+        send({ type: 'dash.get' });
+      };
+      ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.type === 'values') { vals = m; drawAll(); if (dashPanel) live('dash-panel', renderDashPanel); }
+        else if (m.type === 'dashboard') onDashboard(m);
+        else if (m.type === 'catalog') { cat = m; live('props', renderPane); drawAll(); live('bezel-panel', renderBezelPanel); }
+        else if (m.type === 'themes') onThemes(m);
+        else if (m.type === 'fleet') onFleet(m);
+        else if (m.type === 'notice') notice(m.text, m.tone);
+        else if (m.type === 'result' && waiting.has(m.id)) { const cb = waiting.get(m.id); waiting.delete(m.id); cb(m.result, m.error); }
+      };
+      ws.onclose = () => { vals = null; drawAll(); if (fleet) { closeFleetDetail(); fleet = null; renderFleet(); layoutFleet(); if (dash) renderBar(); } setTimeout(connect, 2000); };
+    }
+    function send(msg, cb) {
+      const id = nextId++;
+      if (cb) waiting.set(id, cb);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id, ...msg }));
+      return id;
+    }
+
+    let noticeTimer;
+    function notice(text, tone) {
+      const n = $('notice');
+      n.textContent = text;
+      n.className = tone || '';
+      n.style.display = 'block';
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => { n.style.display = 'none'; }, 5000);
+    }
+
+    /** A modal choice; `body` is HTML the caller has already escaped. */
+    function ask(title, body, buttons) {
+      const dlg = $('dlg');
+      $('dlg-title').textContent = title;
+      $('dlg-body').innerHTML = body;
+      $('dlg-buttons').innerHTML = buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-choice="${i}" type="button">${esc(b.text)}</button>`).join('');
+      return new Promise((resolve) => {
+        $('dlg-buttons').onclick = (e) => {
+          const b = e.target.closest('[data-choice]');
+          if (!b) return;
+          dlg.close();
+          resolve(buttons[Number(b.dataset.choice)].value);
+        };
+        dlg.oncancel = () => resolve(undefined);
+        dlg.showModal();
+      });
+    }
+
+    // ------------------------------------------------------------ live updates and text fields
+
+    // A live push never replaces a control in use: while a field or list in a panel has the focus, or a
+    // pointer is down in it (a click, a drag, an open list), its redraw waits, and catches up after.
+    let pointerDown = null;
+    const held = new Map();
+    function busy(root) {
+      if (!root) return false;
+      const a = document.activeElement;
+      if (a && root.contains(a) && a.matches('input, select, textarea, [contenteditable]')) return true;
+      return Boolean(pointerDown && root.contains(pointerDown));
+    }
+    /** A push's redraw of the panel with this id: now, or once nothing in it is in use. */
+    function live(id, render) {
+      if (busy($(id))) { held.set(id, render); return; }
+      held.delete(id);
+      render();
+    }
+    function catchUp() {
+      for (const [id, render] of [...held]) {
+        if (busy($(id))) continue;
+        held.delete(id);
+        render();
+      }
+    }
+    document.addEventListener('pointerdown', (e) => { pointerDown = e.target; }, true);
+    const released = () => { pointerDown = null; setTimeout(catchUp, 0); };
+    for (const ev of ['pointerup', 'pointercancel', 'dragend']) document.addEventListener(ev, released, true);
+    document.addEventListener('focusout', () => setTimeout(catchUp, 0), true);
+
+    // One rule for every one-line field: Enter accepts what it belongs to (the nearest data-accept names
+    // its button, or "blur"), Escape puts back the value it had when it got the focus, and Enter while an
+    // input method is composing does nothing. A textarea keeps Enter for a new line.
+    const ONE_LINE = new Set(['', 'text', 'search', 'number', 'url', 'email', 'tel', 'password']);
+    const isOneLine = (el) => el instanceof HTMLInputElement && ONE_LINE.has(el.getAttribute('type') || '');
+    function acceptTarget(el) {
+      const scope = el.closest('[data-accept]');
+      const sel = scope && scope.dataset.accept;
+      if (!sel) return null;
+      return sel === 'blur' ? 'blur' : scope.querySelector(sel) || document.querySelector(sel);
+    }
+    document.addEventListener('focusin', (e) => { if (isOneLine(e.target) || e.target instanceof HTMLTextAreaElement) e.target._was = e.target.value; }, true);
+    document.addEventListener('keydown', (e) => {
+      const el = e.target;
+      const area = el instanceof HTMLTextAreaElement;
+      if (!isOneLine(el) && !area) return;
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'Enter' && !area) {
+        e.preventDefault();
+        const t = acceptTarget(el);
+        if (!t) return;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (t === 'blur') el.blur(); else if (!t.disabled) t.click();
+      } else if (e.key === 'Escape') {
+        // The first Escape undoes the edit; with nothing to undo it does what Escape does there.
+        if (el._was === undefined || el.value === el._was) { if (!el.closest('dialog')) el.blur(); return; }
+        e.preventDefault();
+        e.stopPropagation();
+        el.value = el._was;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, true);
+
+    // ------------------------------------------------------------ model helpers
+
+    // A single-tab window may show a generic tab while a ship's dashboard is on screen.
+    const serverTab = (id) => dash && (dash.tabs.find((t) => t.id === id) || (ONLY && genericBoard ? genericBoard.tabs.find((t) => t.id === id) : undefined));
+    const shown = () => (editing && work ? work : serverTab(currentId));
+    // Compared with keys sorted: a field set in another order than the service writes it is no change.
+    const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+    const dirty = () => editing && work && canon(work) !== canon(serverTab(work.id));
+    const valueLabel = (id) => (cat && (cat.values.find((v) => v.id === id) || {}).label) || id;
+    const toggleLabel = (id) => (cat && (cat.toggles.find((t) => t.id === id) || {}).label) || id;
+    const actionText = (name) => name.replace(/^v_/, '').replace(/_/g, ' ');
+    const isConfirm = (name) => meta && meta.confirmGroup.includes(name);
+
+    function onDashboard(m) {
+      // Mid-drag on the edit grid a redraw would drop the widget being moved: catch up after.
+      if (editing && pointerDown && $('stage').contains(pointerDown)) { held.set('stage', () => onDashboard(m)); return; }
+      const prev = board;
+      const prevTab = serverTab(currentId);
+      dash = m.dashboard;
+      board = m.board || null;
+      genericBoard = m.generic || null;
+      boards = m.dashboards ? { list: m.dashboards, switchOnShipChange: m.switchOnShipChange, pinned: m.pinned, fileProblem: m.fileProblem } : null;
+      meta = { kinds: m.kinds, lookOnlyFor: m.lookOnlyFor, leverSize: m.leverSize, lampValues: m.lampValues, limits: m.limits, confirmGroup: m.confirmGroup, greyable: new Set(m.greyable || []) };
+      const keepWork = editing && work && dirty();
+      if (prev && board && prev.id !== board.id && prevTab && !keepWork) {
+        // Another dashboard (a ship change or a pick): the tab of the same name, and a single-tab
+        // window keeps its generic tab when the ship's dashboard has none of that name.
+        const named = (list) => list && list.find((t) => t.name === prevTab.name);
+        const next = named(dash.tabs) || (ONLY ? named(genericBoard && genericBoard.tabs) || serverTab(prevTab.id) : null);
+        currentId = next ? next.id : currentId;
+        if (ONLY && next) { const u = new URL(location.href); u.searchParams.set('tab', next.id); history.replaceState(null, '', u); }
+        if (editing) work = clone(serverTab(currentId) || dash.tabs[0]);
+      }
+      if (!serverTab(currentId) && !keepWork) {
+        if (ONLY) { currentId = null; showEmpty(`There is no tab "${ONLY}" on this dashboard.`); return; }
+        currentId = dash.tabs[0].id;
+        work = editing ? clone(serverTab(currentId)) : null;
+      } else if (editing && !dirty()) work = clone(serverTab(currentId));
+      if (m.fileProblem && !shownProblem) { shownProblem = true; notice(m.fileProblem, 'bad'); }
+      live('bar', renderBar);
+      live('props', renderPane);
+      buildGrid();
+      live('bezel-panel', renderBezelPanel);
+      live('theme-panel', renderThemePanel);
+      if (dashPanel) live('dash-panel', () => renderDashPanel(true));
+    }
+
+    function showEmpty(text) {
+      $('empty').textContent = text;
+      $('empty').style.display = 'flex';
+      if (grid) grid.destroy(true);
+      grid = null;
+      builtFor = '';
+    }
+
+    // ------------------------------------------------------------ bar
+
+    function renderBar() {
+      if (ONLY) { $('bar').hidden = true; return; }
+      const d = dirty();
+      $('tabs').innerHTML = dash.tabs.map((t) => `<button class="tab ${t.id === currentId ? 'on' : ''}" data-tab="${esc(t.id)}" type="button">${esc(editing && work && t.id === work.id ? work.name : t.name)}</button>`).join('') +
+        (editing && dash.tabs.length < meta.limits.tabs ? '<button class="tab add" data-add-tab type="button" title="Add a tab">+ Tab</button>' : '');
+      const picker = boards && board ? `<button class="btn board ${dashPanel ? 'on' : ''}" data-do="boards" type="button" title="Dashboards: the generic one and one per ship">${esc(board.name)} &#x25BE;</button>` : '';
+      $('tools').innerHTML = picker + (editing ? '' : fleetTools()) + (editing
+        ? `${d ? '<span class="dirty">unsaved</span>' : ''}<button class="btn" data-do="export" type="button">Export</button><button class="btn" data-do="import" type="button">Import</button>` +
+          `<button class="btn" data-do="revert" type="button" ${d ? '' : 'disabled'}>Revert</button><button class="btn primary" data-do="save" type="button" ${d ? '' : 'disabled'}>Save</button><button class="btn" data-do="done" type="button">Done</button>`
+        : `${restorable().length ? '<button class="btn" data-do="restore" type="button" title="Open each tab that has a display on that display">Restore detached tabs</button>' : ''}` +
+          '<button class="btn" data-do="detach" type="button" title="Open this tab in its own window on a display">Detach</button><button class="btn" data-do="edit" type="button">Edit</button>');
+    }
+
+    async function confirmLeave() {
+      if (!dirty()) return true;
+      const c = await ask('Unsaved changes', `<p>${esc(work.name)} has changes that are not saved.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Discard', value: 'discard', cls: 'danger' }, { text: 'Save', value: 'save', cls: 'primary' }]);
+      if (c === 'save') return save();
+      return c === 'discard';
+    }
+
+    function save() {
+      return new Promise((resolve) => {
+        send({ type: 'dash.saveTab', tab: work }, (problems) => {
+          const ok = Array.isArray(problems) && problems.length === 0;
+          if (ok) notice('Tab saved', 'ok');
+          resolve(ok);
+        });
+      });
+    }
+
+    $('tabs').addEventListener('click', async (e) => {
+      const t = e.target.closest('[data-tab]');
+      if (t && t.dataset.tab !== currentId) {
+        if (!(await confirmLeave())) return;
+        currentId = t.dataset.tab;
+        selected = null;
+        work = editing ? clone(serverTab(currentId)) : null;
+        renderBar(); renderPane(); buildGrid();
+      }
+      if (e.target.closest('[data-add-tab]')) {
+        if (!(await confirmLeave())) return;
+        send({ type: 'dash.addTab' }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); selected = null; renderBar(); renderPane(); buildGrid(); } });
+      }
+    });
+
+    $('tools').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-do]');
+      if (!b) return;
+      const act = b.dataset.do;
+      if (act === 'edit') { editing = true; work = clone(serverTab(currentId)); selected = null; }
+      else if (act === 'done') { if (!(await confirmLeave())) return; editing = false; work = null; selected = null; }
+      else if (act === 'revert') { work = clone(serverTab(currentId)); selected = null; }
+      else if (act === 'save') { await save(); }
+      else if (act === 'export') { exportFile(); return; }
+      else if (act === 'import') { $('file').value = ''; $('file').click(); return; }
+      else if (act === 'detach') { detach(serverTab(currentId)); return; }
+      else if (act === 'restore') { restoreDetached(); return; }
+      else if (act === 'boards') { if (dashPanel) closeDashPanel(); else openDashPanel(); return; }
+      else if (act === 'fleet') { fleetOpen = !fleetOpen; try { localStorage.setItem(FLEET_OPEN_KEY, fleetOpen ? '1' : '0'); } catch { /* per-viewer only */ } layoutFleet(); renderBar(); return; }
+      document.body.classList.toggle('editing', editing);
+      renderBar(); renderPane(); buildGrid();
+    });
+
+    // ------------------------------------------------------------ export and import
+
+    function exportFile() {
+      send({ type: 'dash.export' }, (r) => {
+        if (!r) return;
+        const url = URL.createObjectURL(new Blob([r.text], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = r.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    }
+
+    $('file').addEventListener('change', async () => {
+      const f = $('file').files[0];
+      if (!f) return;
+      if (f.size > MAX_IMPORT) { notice(`That file is over ${MAX_IMPORT / 1024} KiB, too big for a dashboard`, 'bad'); return; }
+      const text = await f.text();
+      send({ type: 'dash.import', text }, (r) => r && showImport(text, r.summary));
+    });
+
+    const SHOW_SKIPPED = 12;
+    async function showImport(text, s) {
+      if (!s.ok) { await ask('Cannot import', `<p>${esc(s.problem)}</p>`, [{ text: 'Close', value: 'close' }]); return; }
+      const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      let body = `<p>${plural(s.tabs, 'tab', 'tabs')} with ${plural(s.widgets, 'widget', 'widgets')}.</p>`;
+      if (s.newerVersion) body += `<p class="warn">The file is from a newer version (schema ${esc(s.newerVersion)}). Only what this version knows is imported.</p>`;
+      if (s.confirmButtons) body += `<p class="warn">${plural(s.confirmButtons, 'button sends an action', 'buttons send actions')} in the confirm group (power off, eject and the like). Each press still needs a 1.5 s hold.</p>`;
+      if (s.unknownKinds.length) body += `<p>Unknown widget kinds skipped: ${s.unknownKinds.map(esc).join(', ')}</p>`;
+      if (s.skipped.length) {
+        body += `<p>${plural(s.skipped.length, 'item was', 'items were')} left out:</p><ul>${s.skipped.slice(0, SHOW_SKIPPED).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+        if (s.skipped.length > SHOW_SKIPPED) body += `<p>and ${s.skipped.length - SHOW_SKIPPED} more not listed here.</p>`;
+      } else body += '<p>Nothing was left out.</p>';
+      body += '<p>Importing replaces your whole dashboard. Export first to keep a copy of the current one.</p>';
+      const c = await ask('Import dashboard', body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Replace dashboard', value: 'apply', cls: 'primary' }]);
+      if (c !== 'apply') return;
+      send({ type: 'dash.import', text, confirm: true }, (r) => {
+        if (r && r.applied) { work = null; editing = false; document.body.classList.remove('editing'); currentId = null; selected = null; notice('Dashboard imported', 'ok'); }
+      });
+    }
+
+    // ------------------------------------------------------------ grid
+
+    function cellHeight(rows) {
+      return $('stage').clientHeight / rows;
+    }
+
+    function buildGrid() {
+      const tab = shown();
+      if (!tab) return;
+      syncTheme();
+      $('empty').style.display = 'none';
+      const key = JSON.stringify([tab.rows, tab.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing]);
+      if (grid && key === builtFor) { drawAll(); return; }
+      builtFor = key;
+      if (grid) grid.destroy(true);
+      const el = document.createElement('div');
+      el.className = 'grid-stack';
+      el.id = 'grid';
+      $('stage').prepend(el);
+      const margin = parseFloat(getComputedStyle(document.body).getPropertyValue('--gap')) || 3;
+      grid = GridStack.init({ column: meta.limits.columns, row: tab.rows, cellHeight: cellHeight(tab.rows), margin, mode: 'float', staticGrid: !editing, animate: false }, el);
+      grid.load(tab.widgets.map((w) => ({ id: w.id, x: w.x, y: w.y, w: w.w, h: w.h, minW: meta.kinds[w.kind].min.w, minH: meta.kinds[w.kind].min.h })));
+      grid.on('change', (_e, nodes) => {
+        if (!editing) return;
+        for (const n of nodes) {
+          const w = work.widgets.find((x) => x.id === n.id);
+          if (w) Object.assign(w, { x: n.x, y: n.y, w: n.w, h: n.h });
+        }
+        builtFor = JSON.stringify([work.rows, work.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing]);
+        renderBar();
+        if (selected) renderPane();
+      });
+      fit();
+      drawAll();
+    }
+
+    function fit() {
+      const tab = shown();
+      if (!grid || !tab) return;
+      const ch = cellHeight(tab.rows);
+      grid.cellHeight(ch);
+      $('stage').style.setProperty('--ch', `${ch}px`);
+      $('stage').style.setProperty('--cw', `${$('stage').clientWidth / meta.limits.columns}px`);
+      shrink($('stage'));
+    }
+    let fitFrame = 0;
+    window.addEventListener('resize', () => { cancelAnimationFrame(fitFrame); fitFrame = requestAnimationFrame(fit); });
+
+    // ------------------------------------------------------------ themes
+
+    const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+    const allThemes = () => (themes ? [...themes.builtIn, ...themes.user] : []);
+    const themeById = (id) => allThemes().find((t) => t.id === id);
+    const isBuiltInTheme = (id) => Boolean(themes && themes.builtIn.some((t) => t.id === id));
+    /** The tab's own theme, else the dashboard's, else the default; a removed theme is passed over. */
+    const themeFor = (tab) => themeById(tab && tab.theme) || themeById(boardThemeOf(tab)) || themeById(themes && themes.defaultTheme);
+    /** The theme of the dashboard a tab is on: a generic tab kept in a window draws in the generic theme. */
+    const boardThemeOf = (tab) => (tab && genericBoard && dash && !dash.tabs.some((t) => t.id === tab.id) && genericBoard.tabs.some((t) => t.id === tab.id) ? genericBoard.theme : dash && dash.theme);
+    // What the widgets were last drawn for: a change of base, bars, zeros or font draws them again.
+    let drawnFor = '';
+
+    /** Put a theme on the page: built-in colours come from the served CSS, a user theme's are set here, hex only. */
+    function applyTheme(t) {
+      if (!t) return;
+      const b = document.body;
+      Object.assign(b.dataset, { theme: t.id, base: t.base, font: t.font, bars: t.bars, zeros: t.leadingZeros ? 'dim' : 'none' });
+      // Native parts of a control (scrollbars, pickers, option lists) follow the field background.
+      const field = t.colors['input-bg'] || t.colors.bg;
+      document.documentElement.style.colorScheme = HEX.test(field || '') && luminance(field) > 0.4 ? 'light' : 'dark';
+      for (const k of themes.colorTokens) {
+        const v = t.colors[k];
+        if (!isBuiltInTheme(t.id) && typeof v === 'string' && HEX.test(v)) b.style.setProperty(`--${k}`, v);
+        else b.style.removeProperty(`--${k}`);
+      }
+      const key = JSON.stringify([t.base, t.font, t.bars, t.leadingZeros]);
+      if (key !== drawnFor) {
+        drawnFor = key;
+        if (grid) for (const el of grid.getGridItems()) { const c = el.querySelector('.grid-stack-item-content'); if (c) c._html = ''; }
+      }
+    }
+    /** The theme of what is on screen, or the theme being edited while the theme editor is open. */
+    function syncTheme() {
+      if (!themes) return;
+      applyTheme(themeDraft || themeFor(shown()));
+    }
+    const theme = () => ({ base: document.body.dataset.base, bars: document.body.dataset.bars, zeros: document.body.dataset.zeros === 'dim' });
+    // Each base's own widget skins and title mark; its shapes, rules and chevrons are the CSS under [data-base].
+    const SKINS = {
+      rsi: { shields: 'ring', titlePre: 0 },
+      drake: { shields: 'bars', titlePre: 3 },
+    };
+    const skin = () => SKINS[document.body.dataset.base] || SKINS.rsi;
+
+    function onThemes(m) {
+      themes = m;
+      if (themeDraft && !themeById(themeDraft.id)) themeDraft = null;
+      syncTheme();
+      live('props', renderPane);
+      live('theme-panel', renderThemePanel);
+      drawAll();
+    }
+
+    // Web fonts arrive after the first draw; text sized for the fallback font is sized again.
+    if (document.fonts) document.fonts.addEventListener('loadingdone', () => shrink($('stage')));
+
+    // ------------------------------------------------------------ widgets
+
+    /** Text that shrinks to fit its box: by the box height (`fh` percent) or its width, whichever is smaller. */
+    const fit1 = (cls, text, fh) => {
+      // A title mark (Drake's "// ") is drawn before every label, so it takes its share of the width.
+      const n = String(text).length + (/\blbl\b/.test(cls) ? skin().titlePre : 0);
+      return `<span class="fit ${cls}" style="--n:${Math.max(3, n)};${fh ? `--fh:${fh}` : ''}">${esc(text)}</span>`;
+    };
+
+    /** A reading's leading whole number padded with zeros the theme dims (RSI), or left as is (Drake). */
+    function zeros(text) {
+      const m = theme().zeros && /^(\d+)(.*)$/.exec(String(text));
+      if (!m) return { pad: '', text: String(text) };
+      const width = m[2].trim().startsWith('%') ? 3 : 4;
+      return { pad: '0'.repeat(Math.max(0, width - m[1].length)), text: String(text) };
+    }
+    const numHtml = (text, tag = 'span') => { const z = zeros(text); return `${z.pad ? `<${tag} class="lz">${z.pad}</${tag}>` : ''}${esc(z.text)}`; };
+    const fitNum = (cls, text) => { const z = zeros(text); return `<span class="fit ${cls}" style="--n:${Math.max(3, z.pad.length + z.text.length)}">${numHtml(text)}</span>`; };
+
+    function lampOf(w) {
+      const src = w.bind.kind === 'value' ? vals && vals.values[w.bind.id] : vals && vals.toggles[w.bind.id];
+      let s = (src && src.lamp) || 'unknown';
+      if (w.bind.invert && (s === 'on' || s === 'off')) s = s === 'on' ? 'off' : 'on';
+      return { s, title: src ? (src.text ?? src.state) : DASH };
+    }
+
+    const SUPPORT_MARK = { absent: 'NOT ON SHIP', unavailable: 'N/A' };
+    /** What this ship lacks of a widget's function: the service's support entry for its bind, or null. */
+    function supportOf(w) {
+      const s = vals && vals.support;
+      if (!s) return null;
+      const id = w.kind === 'mode' ? 'mode' : w.bind.kind === 'value' || w.bind.kind === 'toggle' ? w.bind.id : null;
+      return (id && s[id]) || null;
+    }
+    const canGrey = (w) => Boolean(meta && meta.greyable && meta.greyable.has(w.kind === 'mode' ? 'mode' : w.bind.id) && (w.kind === 'mode' || w.bind.kind === 'value' || w.bind.kind === 'toggle'));
+
+    /** Greyed, never removed: a click still sends the game's own toggle where there is one. Hidden in use only when asked. */
+    function renderWidget(w) {
+      const sup = supportOf(w);
+      if (!sup) return widgetHtml(w);
+      if (sup.state === 'absent' && w.hideUnsupported && !editing) return '<div class="w ghide"></div>';
+      const name = w.label || (w.kind === 'mode' ? 'Master mode' : w.bind.kind === 'value' ? valueLabel(w.bind.id) : toggleLabel(w.bind.id));
+      const reason = `${name}: ${sup.reason}${sup.state === 'absent' && w.hideUnsupported ? ' (hidden in use)' : ''}`;
+      return `<div class="gwrap g-${esc(sup.state)}" title="${esc(reason)}">${widgetHtml(w).replace(/ title="[^"]*"/g, '')}` +
+        `<span class="gmark">${esc(sup.state === 'absent' && w.hideUnsupported ? 'HIDDEN IN USE' : SUPPORT_MARK[sup.state] || '')}</span><span class="gtip">${esc(reason)}</span></div>`;
+    }
+
+    function widgetHtml(w) {
+      const v = vals;
+      switch (w.kind) {
+        case 'lamp': {
+          const { s, title } = lampOf(w);
+          const label = w.label || (w.bind.kind === 'value' ? ((v && v.values[w.bind.id]) || {}).short || valueLabel(w.bind.id) : toggleLabel(w.bind.id));
+          return `<div class="w lamp ${esc(w.look)} s-${s}" title="${esc(`${label}: ${title}`)}"><span class="face">${fit1('', label)}</span></div>`;
+        }
+        case 'readout': {
+          const r = v && v.values[w.bind.id];
+          const text = r ? r.text : DASH;
+          const tone = r ? r.tone : 'unknown';
+          const bar = w.look === 'bar' ? `<div class="meter t-${tone}"><i style="width:${r && r.fraction !== undefined ? Math.round(r.fraction * 100) : 0}%"></i></div>` : '';
+          return `<div class="w panel readout ${esc(w.look)}">${fit1('lbl', w.label || valueLabel(w.bind.id))}${fitNum(`val t-${tone === 'ok' ? 'info' : tone}`, text)}${bar}</div>`;
+        }
+        case 'toggle': {
+          if (w.look === 'switch') return lightSwitch(w);
+          if (w.look === 'lever') return gearLever(w);
+          const t = v && v.toggles[w.bind.id];
+          let on = t ? t.on : undefined;
+          let state = t ? t.state : DASH;
+          let tone = t ? t.tone : 'unknown';
+          if (w.bind.invert && on !== undefined && (state === 'ON' || state === 'OFF')) { on = !on; state = on ? 'ON' : 'OFF'; tone = on ? 'ok' : 'off'; }
+          return button(w, w.label || toggleLabel(w.bind.id), state, { lit: on === true, tone, ind: true });
+        }
+        case 'action': {
+          const confirm = isConfirm(w.bind.id);
+          return button(w, w.label || actionText(w.bind.id), confirm ? 'HOLD' : 'SEND', { confirm });
+        }
+        case 'sequence': {
+          const seq = cat && cat.sequences.find((s) => s.id === w.bind.id);
+          if (cat && !seq) return button(w, w.label || w.bind.id, 'MISSING', { tone: 'bad' });
+          const run = v && v.running && v.running.id === w.bind.id && v.running.status === 'running' ? v.running : null;
+          const last = seqResults.get(w.bind.id);
+          const state = run ? `RUN ${run.step}/${run.of}` : last ? last.status.toUpperCase() : 'RUN';
+          const tone = run ? 'warn' : last && last.status !== 'done' ? 'bad' : last ? 'info' : 'off';
+          const label = w.label || (seq ? seq.name : w.bind.id);
+          if (w.look === 'push') return pushButton(w, label, state, tone, run ? 'lit' : last ? (last.status === 'done' ? 'done' : 'failed') : '');
+          return button(w, label, state, { lit: Boolean(run), tone, ind: true });
+        }
+        case 'mode': {
+          const m = v && v.values['ship.master_mode'] ? v.values['ship.master_mode'].text : DASH;
+          const seg = (x) => `<div class="seg press ${m === x ? 'on' : ''}" data-mode="${x}">${fit1('', x)}</div>`;
+          return `<div class="w panel mode">${seg('NAV')}${seg('SCM')}</div>`;
+        }
+        case 'status': {
+          const link = v ? v.link : 'offline';
+          const ship = !v ? DASH : v.inShip ? v.values['ship.name'].text : 'Not in a ship';
+          const linkText = { live: 'Telemetry live', waiting: 'Waiting for the game', idle: 'Telemetry off', offline: 'Service not running' }[link] || link;
+          const run = v && v.running && v.running.status === 'running' ? `${v.running.name}: step ${v.running.step}/${v.running.of}` : '';
+          // recording: only the Rust app sends it, while it records telemetry.
+          const rec = v && v.recording === true ? '<span class="pill rec" title="Recording telemetry">REC</span>' : '';
+          return `<div class="w panel strip">${fit1('ship', ship)}<span class="spacer"></span>${run ? fit1('run', run) : ''}${rec}<span class="pill ${esc(link)}">${esc(linkText)}</span></div>`;
+        }
+        case 'shields': return shieldFaces(w);
+        case 'power': return powerColumns(w);
+        case 'weapons': return weaponList();
+        case 'fuel': return fuelBars();
+        case 'config': return configList();
+      }
+      return `<div class="w">${fit1('missing', 'unknown widget')}</div>`;
+    }
+
+    function button(w, label, state, o) {
+      const cls = `w panel button press ${esc(w.look)}${o.lit ? ' lit' : ''}${o.confirm ? ' confirm' : ''}`;
+      const inner = `${fit1('lbl', label)}${fit1(`val t-${o.confirm ? 'bad' : o.tone === 'ok' ? 'info' : o.tone || 'info'}`, state)}${o.ind ? '<span class="ind"></span>' : ''}`;
+      return w.look === 'round' ? `<div class="${cls}"><div class="disc">${inner}</div></div>` : `<div class="${cls}">${inner}</div>`;
+    }
+
+    // ------------------------------------------------------------ drawn looks
+
+    const svg = (viewBox, body) => `<svg viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${body}</svg>`;
+
+    const CYCLE_ONLY = new Set(['transform']);
+
+    /** A toggle's state as the widget shows it, with `invert` applied to settled states. */
+    function toggleState(w) {
+      const t = vals && vals.toggles[w.bind.id];
+      if (!t) return { t, on: undefined, state: DASH };
+      if (t.movingTo !== undefined) return { t, on: undefined, moving: t.movingTo, state: t.state };
+      // Some ships send no state for a toggle that still works (the Corsair's wings): show the
+      // action instead of a dash. The click already sends the game's toggle when the state is unknown.
+      if (t.on === undefined && t.state === DASH && vals.inShip && CYCLE_ONLY.has(w.bind.id)) return { t, on: undefined, state: 'CYCLE' };
+      const on = t.on === undefined ? undefined : w.bind.invert ? !t.on : t.on;
+      return { t, on, state: on === undefined ? t.state : w.bind.invert ? (on ? 'ON' : 'OFF') : t.state };
+    }
+
+    // Where each switch or lever was last drawn, so a change animates from there once.
+    const motion = new Map();
+    function moved(id, pos) {
+      const m = motion.get(id);
+      if (!m) { motion.set(id, { pos, from: '' }); return ''; }
+      if (m.pos === pos) return m.from;
+      clearTimeout(m.timer);
+      const next = { pos, from: `from-${m.pos}` };
+      next.timer = setTimeout(() => { next.from = ''; drawAll(); }, 700);
+      motion.set(id, next);
+      return next.from;
+    }
+
+    function lightSwitch(w) {
+      const { on, state } = toggleState(w);
+      const pos = on === undefined ? 'unknown' : on ? 'on' : 'off';
+      const from = moved(w.id, pos);
+      const bat = on === undefined ? '' :
+        `<g class="bat ${on ? '' : 's-off-bat'} ${from}"><path class="tip" d="M26.5 52 L27.6 31 H32.4 L33.5 52 Z"/><circle class="tip" cx="30" cy="29" r="5.5"/></g>`;
+      const body = `<rect class="plate" x="6" y="2" width="48" height="96" rx="5"/>` +
+        `<text class="mark ${on === true ? 'lit' : ''}" x="30" y="12">ON</text><text class="mark ${on === false ? 'lit' : ''}" x="30" y="90">OFF</text>` +
+        `<circle class="nut" cx="30" cy="52" r="10"/>${bat}`;
+      const tone = on === undefined ? 'unknown' : on ? 'info' : 'off';
+      return `<div class="w panel drawn sw press s-${pos}">${fit1('lbl', w.label || toggleLabel(w.bind.id))}${svg('0 0 60 100', body)}${fit1(`val t-${tone}`, state)}</div>`;
+    }
+
+    // A click moves the lever at once, as a hand would; it goes back if the game does not follow.
+    const leverPending = new Map();
+    const LEVER_WAIT_MS = 4000;
+
+    /** Where the stream puts the lever: at the end it is moving to, or the middle when not known. */
+    function leverSettled(w) {
+      const { on, moving } = toggleState(w);
+      return moving !== undefined ? (moving ? 'down' : 'up') : on === undefined ? 'mid' : on ? 'down' : 'up';
+    }
+
+    function gearLever(w) {
+      const { on, moving, state } = toggleState(w);
+      const settled = leverSettled(w);
+      const pending = leverPending.get(w.id);
+      const pos = pending && Date.now() - pending.at < LEVER_WAIT_MS && pending.from === settled ? pending.to : settled;
+      const from = moved(w.id, pos);
+      const knob = moving !== undefined ? 'moving' : on === undefined && pos === 'mid' ? 's-unknown-knob' : '';
+      const body = `<rect class="plate" x="4" y="4" width="92" height="162" rx="6"/><circle class="screw" cx="12" cy="12" r="2.5"/><circle class="screw" cx="88" cy="12" r="2.5"/><circle class="screw" cx="12" cy="158" r="2.5"/><circle class="screw" cx="88" cy="158" r="2.5"/>` +
+        `<rect class="stripe" x="40" y="24" width="20" height="122" rx="3"/><rect class="slot" x="46" y="30" width="8" height="110" rx="4"/>` +
+        `<text class="mark ${pos === 'up' ? 'lit' : ''}" x="80" y="40">UP</text><text class="mark ${pos === 'down' ? 'lit' : ''}" x="80" y="124">DN</text>` +
+        `<g class="handle at-${pos} ${from} ${knob}"><rect class="arm" x="47" y="40" width="6" height="17" rx="2"/><circle class="tire" cx="50" cy="40" r="15"/><circle class="hub" cx="50" cy="40" r="5"/></g>`;
+      const tone = moving !== undefined ? 'warn' : on === undefined ? 'unknown' : 'info';
+      const text = moving !== undefined ? 'MOVING' : state;
+      return `<div class="w panel drawn lever press">${fit1('lbl', w.label || toggleLabel(w.bind.id))}${svg('0 0 100 170', body)}${fit1(`val t-${tone}`, text)}</div>`;
+    }
+
+    function pushButton(w, label, state, tone, ring) {
+      const body = `<rect class="housing" x="4" y="4" width="92" height="92" rx="12"/><circle class="collar" cx="50" cy="50" r="40"/><circle class="ring" cx="50" cy="50" r="35"/>` +
+        `<circle class="cap" cx="50" cy="50" r="28"/><circle class="cap-hi" cx="50" cy="50" r="21"/>`;
+      return `<div class="w panel drawn push press ${ring}">${fit1('lbl', label)}${svg('0 0 100 100', body)}${fit1(`val t-${tone === 'ok' ? 'info' : tone}`, state)}</div>`;
+    }
+
+    const toneOf = (f) => (f === undefined ? 'unknown' : f >= 0.5 ? 'ok' : f >= 0.25 ? 'warn' : 'bad');
+    const polar = (r, deg) => [r * Math.cos((deg * Math.PI) / 180), r * Math.sin((deg * Math.PI) / 180)];
+    function arc(r, a0, a1) {
+      const [x0, y0] = polar(r, a0);
+      const [x1, y1] = polar(r, a1);
+      return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+    }
+
+    /**
+     * A bar inside (x, y, w, h), filled to `f` from the bottom (vertical) or the left: the theme's
+     * segments, or one solid fill. `cls` carries the tone.
+     */
+    function barSvg(x, y, w, h, f, vertical, segments, cls) {
+      if (theme().bars !== 'segmented') {
+        const fw = vertical ? w : w * f, fh = vertical ? h * f : h;
+        return `<g class="${cls}"><rect class="seg-off" x="${x}" y="${y}" width="${w}" height="${h}"/><rect class="seg-on" x="${x}" y="${(vertical ? y + h - fh : y).toFixed(1)}" width="${fw.toFixed(1)}" height="${fh.toFixed(1)}"/></g>`;
+      }
+      const lit = Math.round(f * segments);
+      const step = (vertical ? h : w) / segments;
+      let out = '';
+      for (let i = 0; i < segments; i++) {
+        const c = i < lit ? 'seg-on' : 'seg-off';
+        out += vertical
+          ? `<rect class="${c}" x="${x}" y="${(y + h - (i + 1) * step + 1).toFixed(1)}" width="${w}" height="${(step - 2).toFixed(1)}"/>`
+          : `<rect class="${c}" x="${(x + i * step + 1).toFixed(1)}" y="${y}" width="${(step - 2).toFixed(1)}" height="${h}"/>`;
+      }
+      return `<g class="${cls}">${out}</g>`;
+    }
+
+    // Our own outline of a generic ship from above, nose up.
+    const HULL = 'M0 -52 L9 -24 L13 -6 L42 22 L42 32 L14 28 L10 40 L-10 40 L-14 28 L-42 32 L-42 22 L-13 -6 L-9 -24 Z';
+    // Drake draws the four faces as straight bars beside the hull: [bar x, y, w, h, vertical], text x, y, anchor, number x, y.
+    const FACE_BARS = [
+      [[-50, -84, 100, 12, false], 0, -102, 'middle', -62, -78],
+      [[64, -50, 12, 100, true], 86, 0, 'start', 70, -62],
+      [[-50, 72, 100, 12, false], 0, 104, 'middle', 62, 78],
+      [[-76, -50, 12, 100, true], -86, 0, 'end', -70, 62],
+    ];
+
+    // With four faces the game sends front, back, left, right (Corsair, PTU, 22 Nov; left by
+    // elimination). Each value is that face's own fraction, not its share of the total.
+    const FACE_NAMES = ['F', 'B', 'L', 'R'];
+    const FACE_TITLES = ['Front', 'Back', 'Left', 'Right'];
+    // Drawing slots run clockwise from the top: front 0, right 1, back 2, left 3.
+    const FACE_SLOT = [0, 2, 3, 1];
+
+    function shieldFaces(w) {
+      const level = vals && vals.values['ship.shields'];
+      const faces = vals ? vals.shieldFaces : [];
+      const n = faces.length || 4;
+      const span = 360 / n;
+      let body = `<path class="hull" d="${HULL}"/>`;
+      const asBars = skin().shields === 'bars' && n === 4;
+      const named = n === 4;
+      for (let i = 0; i < n; i++) {
+        const f = faces[i];
+        const slot = named ? FACE_SLOT[i] : i;
+        const mark = named ? FACE_NAMES[i] : String(i + 1);
+        const pct = `<tspan>${f ? numHtml(f.text, 'tspan') : DASH}</tspan>`;
+        if (asBars) {
+          const [[x, y, w, h, vertical], tx, ty, anchor, nx, ny] = FACE_BARS[slot];
+          body += f && f.fraction !== undefined ? barSvg(x, y, w, h, f.fraction, vertical, 10, `t-${toneOf(f.fraction)}`) : `<rect class="track none" x="${x}" y="${y}" width="${w}" height="${h}"/>`;
+          body += `<text class="face-pct ${f ? '' : 't-unknown'}" x="${tx}" y="${ty}" text-anchor="${anchor}">${pct}</text>`;
+          body += `<text class="face-num" x="${nx}" y="${ny}">${mark}</text>`;
+          continue;
+        }
+        const mid = -90 + slot * span;
+        const a0 = mid - span / 2 + 8;
+        const a1 = mid + span / 2 - 8;
+        body += `<path class="track ${f ? '' : 'none'}" d="${arc(78, a0, a1)}"/>`;
+        if (f && f.fraction !== undefined && f.fraction > 0) body += `<path class="face-arc t-${toneOf(f.fraction)}" d="${arc(78, a0, a0 + (a1 - a0) * f.fraction)}"/>`;
+        const c = Math.cos((mid * Math.PI) / 180);
+        const anchor = c > 0.3 ? 'start' : c < -0.3 ? 'end' : 'middle';
+        const [tx, ty] = polar(anchor === 'middle' ? 101 : 91, mid);
+        body += `<text class="face-pct ${f ? '' : 't-unknown'}" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}">${pct}</text>`;
+        const [bx, by] = polar(62, mid);
+        body += `<circle class="face-badge" cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="7"/><text class="face-num" x="${bx.toFixed(1)}" y="${by.toFixed(1)}">${mark}</text>`;
+      }
+      const text = level ? level.text : DASH;
+      body += `<text class="tot-lbl" x="-136" y="-110">SHIELDS</text><text class="tot-val ${text === DASH ? 't-unknown' : ''}" x="-136" y="-88">${numHtml(text, 'tspan')}</text>`;
+      const title = !faces.length ? 'The game is not reporting shield faces' : named ? 'Front, back, left and right; each value is that face\'s own strength' : 'Faces are numbered in the order the game sends them';
+      return `<div class="w panel shields" title="${esc(title)}">${svg('-140 -125 280 250', body)}</div>`;
+    }
+
+    const FUEL_SEGMENTS = 20;
+    function fuelBars() {
+      const bar = (id, name, x, scaleLeft) => {
+        const r = vals && vals.values[id];
+        const f = r ? r.fraction : undefined;
+        const text = r ? r.text : DASH;
+        const top = 50, h = 140, w = 30;
+        let g = `<text class="f-val ${text === DASH ? 't-unknown' : ''}" x="${x + w / 2}" y="24">${numHtml(text, 'tspan')}</text><text class="f-lbl" x="${x + w / 2}" y="40">${esc(name)}</text>`;
+        g += `<rect class="frame ${f === undefined ? 'none' : ''}" x="${x}" y="${top}" width="${w}" height="${h}"/>`;
+        if (f !== undefined) g += barSvg(x + 3, top + 2, w - 6, h - 4, f, true, FUEL_SEGMENTS, `t-${toneOf(f)}`);
+        for (const p of [0, 25, 50, 75, 100]) {
+          const y = top + h - (h * p) / 100;
+          const tx = scaleLeft ? x - 4 : x + w + 4;
+          g += `<line class="tick" x1="${scaleLeft ? x - 3 : x + w}" x2="${scaleLeft ? x : x + w + 3}" y1="${y}" y2="${y}"/><text class="tick-lbl" x="${tx + (scaleLeft ? -1 : 1)}" y="${y}" text-anchor="${scaleLeft ? 'end' : 'start'}">${p}</text>`;
+        }
+        return g;
+      };
+      return `<div class="w panel fuel">${svg('0 0 160 200', bar('ship.hydrogen_fuel', 'H2 FUEL', 24, true) + bar('ship.quantum_fuel', 'QT FUEL', 106, false))}</div>`;
+    }
+
+    const LOCK = '<svg class="lock" viewBox="0 0 16 16" aria-label="read-only"><rect x="2.5" y="7" width="11" height="7.5" rx="1"/><path d="M5 7 V5 a3 3 0 0 1 6 0 V7"/></svg>';
+    const powerIcon = (state) => `<svg class="pwr-icon ${state}" viewBox="0 0 16 16"><path d="M5 4.2 A5.5 5.5 0 1 0 11 4.2"/><path d="M8 1.5 V8"/></svg>`;
+    const onState = (on) => (on === undefined ? 'unknown' : on ? 'on' : 'off');
+
+    // One column per system the stream reports; the game has set actions for the first three only.
+    const POWER = [['WPN', 'power.weapons', 'power.weapons'], ['THR', 'power.engines', 'power.thrusters'], ['SHLD', 'power.shield_generators', 'power.shields'],
+      ['PLANT', 'power.powerplants'], ['LIFE', 'power.life_support'], ['RADAR', 'power.sensors'], ['COOL', 'power.coolers'], ['GRAV', 'power.gravity_generators'], ['EMIT', 'power.shield_emitters']];
+
+    function powerColumns(w) {
+      const cols = POWER.map(([name, valueId, toggleId]) => {
+        const r = vals && vals.values[valueId];
+        const t = toggleId && vals && vals.toggles[toggleId];
+        const on = t ? t.on : r ? r.on : undefined;
+        const state = on === undefined ? DASH : on ? 'ON' : 'OFF';
+        const tip = `${valueLabel(valueId)}: ${state}${toggleId ? '' : ' (no game action, read-only)'}`;
+        return `<div class="col s-${onState(on)} ${toggleId ? 'press' : ''}" ${toggleId ? `data-click="toggle:${esc(toggleId)}"` : ''} title="${esc(tip)}">` +
+          `<div class="cbar"></div><span class="cl fit">${esc(name)}</span><span class="cv"><span>${esc(state)}</span>${toggleId ? '' : LOCK}</span></div>`;
+      }).join('');
+      return `<div class="w panel list power"><div class="cols same" style="--cols:${POWER.length}">${cols}</div><span class="note fit">pips are not in the game's API</span></div>`;
+    }
+
+    const WEAPON_ROWS = 10;
+    function weaponList() {
+      const wp = vals && vals.weapons;
+      const rows = wp ? wp.rows : [];
+      const shown = rows.length > WEAPON_ROWS ? rows.slice(0, WEAPON_ROWS - 1) : rows;
+      let list = shown.map((r, i) => `<div class="wrow"><span class="edge"></span><span class="wname fit">${esc(r.name || `Weapon ${i + 1}`)}</span>` +
+        `<span class="cell" title="${r.powered === undefined ? 'Power not reported' : r.powered ? 'Powered' : 'Not powered'}">${powerIcon(onState(r.powered))}</span>` +
+        `<span class="cell" title="${r.ready === undefined ? 'Readiness not reported' : r.ready ? 'Ready to fire' : 'Not ready'}"><span class="rdy ${onState(r.ready)}"></span></span></div>`).join('');
+      if (rows.length > shown.length) list += `<div class="more">and ${rows.length - shown.length} more not shown</div>`;
+      if (!wp) list = `<div class="none">${DASH} no weapon data</div>`;
+      else if (!rows.length) list = '<div class="none">No weapons reported</div>';
+      const cm = wp && wp.countermeasures.length ? wp.countermeasures.map((c) => `<span>${esc(c.type)}<b>${numHtml(c.amount)}</b></span>`).join('') : `<span>COUNTERMEASURES<b>${DASH}</b></span>`;
+      return `<div class="w panel list weapons" style="--rows:${Math.max(4, Math.min(rows.length, WEAPON_ROWS))}">` +
+        `<div class="whead"><span class="lbl">Preset</span><span class="preset fit grow">${esc(wp && wp.preset ? wp.preset : DASH)}</span></div>` +
+        `<div class="cols-h"><span></span><span>WEAPON</span><span>PWR</span><span>RDY</span></div><div class="wrows same">${list}</div><div class="wcm">${cm}</div></div>`;
+    }
+
+    function configList() {
+      const rows = vals ? vals.config : [];
+      if (!rows.length) return `<div class="w panel">${fit1('t-unknown', DASH)}</div>`;
+      const groups = ['Flight', 'HUD', 'Gunnery'].map((g) => [g, rows.filter((r) => r.group === g)]);
+      const lines = (gs) => gs.map(([g, rs]) => `<div class="cgrp">${esc(g)}</div>` + rs.map((r) => {
+        const s = onState(r.on);
+        const sup = vals.support && vals.support[r.id];
+        const tip = `${r.label}: ${r.text}${sup ? `, ${sup.reason}` : ''}${r.click ? '' : ' (no game action, read-only)'}`;
+        return `<div class="crow s-${s} ${r.click ? 'press' : ''} ${sup ? `greyed g-${esc(sup.state)}` : ''}" ${r.click ? `data-click="config:${esc(r.id)}"` : ''} title="${esc(tip)}"><span class="box"></span><span class="cl fit grow">${esc(r.label)}</span>${r.click ? '' : LOCK}</div>`;
+      }).join('')).join('');
+      const count = (gs) => gs.reduce((n, [, rs]) => n + rs.length + 1, 0);
+      const a = groups.slice(0, 2), b = groups.slice(2);
+      return `<div class="w panel list config"><div class="clist same" style="--rn:${count(groups)};--rw:${Math.max(count(a), count(b))}">` +
+        `<div class="ccol" style="--k:${count(a)}">${lines(a)}</div><div class="ccol" style="--k:${count(b)}">${lines(b)}</div></div></div>`;
+    }
+
+    function drawAll() {
+      const tab = shown();
+      if (!grid || !tab) return;
+      for (const item of grid.getGridItems()) {
+        const w = tab.widgets.find((x) => x.id === item.gridstackNode.id);
+        const content = item.querySelector('.grid-stack-item-content');
+        if (!w || !content) continue;
+        const html = renderWidget(w);
+        if (content._html !== html) { content._html = html; content.innerHTML = html; shrink(content); }
+        item.classList.toggle('sel', editing && selected === w.id);
+      }
+    }
+
+    /** The CSS sizes text from its length; a wide font can still overrun, so shrink what does. */
+    function shrink(root) {
+      for (const el of root.querySelectorAll('.fit')) {
+        el.style.fontSize = '';
+        if (el.scrollWidth > el.clientWidth) el.style.fontSize = `${(parseFloat(getComputedStyle(el).fontSize) * el.clientWidth) / el.scrollWidth * 0.96}px`;
+      }
+      // Rows of one list read as one size: the smallest any of them needed.
+      for (const g of root.querySelectorAll('.same')) {
+        const fits = [...g.querySelectorAll('.fit')];
+        const min = Math.min(...fits.map((el) => parseFloat(getComputedStyle(el).fontSize)));
+        if (Number.isFinite(min)) for (const el of fits) el.style.fontSize = `${min}px`;
+      }
+      // A short label in a narrow box must not outgrow the value it names.
+      for (const w of root.querySelectorAll('.w')) {
+        const lbl = w.querySelector('.fit.lbl');
+        const val = w.querySelector('.fit.val');
+        if (!lbl || !val) continue;
+        const max = parseFloat(getComputedStyle(val).fontSize) * 0.6;
+        if (parseFloat(getComputedStyle(lbl).fontSize) > max) lbl.style.fontSize = `${max}px`;
+      }
+    }
+
+    const widgetAt = (target) => {
+      const item = target.closest('.grid-stack-item');
+      const tab = shown();
+      return item && tab ? { item, w: tab.widgets.find((x) => x.id === item.gridstackNode.id) } : {};
+    };
+
+    $('stage').addEventListener('click', (e) => {
+      const { w } = widgetAt(e.target);
+      if (editing) { selected = w ? w.id : null; drawAll(); renderPane(); return; }
+      if (!w) return;
+      const part = e.target.closest('[data-click]');
+      if (part) {
+        // Power columns and configuration rows: the service says what each click sends.
+        const [src, id] = part.dataset.click.split(':');
+        const c = !vals ? null : src === 'toggle' ? (vals.toggles[id] || {}).click : (vals.config.find((r) => r.id === id) || {}).click;
+        if (c) send(c);
+        return;
+      }
+      if (w.kind === 'toggle') {
+        const t = vals && vals.toggles[w.bind.id];
+        if (!t) return;
+        // Set the opposite of the known state; when it is not known, the game's own toggle, as a key would.
+        if (w.look === 'lever' && t.click.type === 'set') {
+          leverPending.set(w.id, { from: leverSettled(w), to: t.click.to === 'on' ? 'down' : 'up', at: Date.now() });
+          setTimeout(drawAll, LEVER_WAIT_MS + 50);
+          drawAll();
+        }
+        send(t.click);
+      } else if (w.kind === 'action' && !isConfirm(w.bind.id)) send({ type: 'press', action: w.bind.id });
+      else if (w.kind === 'sequence') runSequence(w.bind.id);
+      else if (w.kind === 'mode') {
+        const seg = e.target.closest('[data-mode]');
+        // A ship that reports no master mode cannot confirm a set: send the game's own cycle.
+        if (seg && supportOf(w)) send({ type: 'press', action: 'v_master_mode_cycle' });
+        else if (seg) send({ type: 'mode', to: seg.dataset.mode });
+      }
+    });
+
+    function runSequence(id) {
+      seqResults.delete(id);
+      send({ type: 'run', sequence: id }, (p) => {
+        if (!p || !p.status) return;
+        seqResults.set(id, p);
+        if (p.status === 'failed') notice(`${p.name} failed at step ${p.step}: ${p.message || ''}`, 'bad');
+        drawAll();
+        setTimeout(() => { if (seqResults.get(id) === p) { seqResults.delete(id); drawAll(); } }, 6000);
+      });
+    }
+
+    // Confirm-group actions: hold the button down for 1.5 s; letting go early cancels.
+    let hold = null;
+    const endHold = () => {
+      if (!hold) return;
+      clearInterval(hold.timer);
+      hold.el.classList.remove('holding');
+      hold.el.style.removeProperty('--hold');
+      if (!hold.sent) send({ type: 'hold.end', action: hold.action });
+      hold = null;
+    };
+    $('stage').addEventListener('pointerdown', (e) => {
+      if (editing || hold) return;
+      const { item, w } = widgetAt(e.target);
+      if (!w || w.kind !== 'action' || !isConfirm(w.bind.id)) return;
+      const el = item.querySelector('.grid-stack-item-content');
+      const action = w.bind.id;
+      const started = Date.now();
+      send({ type: 'hold.start', action });
+      el.classList.add('holding');
+      hold = { el, action, timer: setInterval(() => {
+        const f = (Date.now() - started) / HOLD_MS;
+        el.style.setProperty('--hold', String(Math.min(1, f)));
+        if (f >= 1) { hold.sent = true; endHold(); send({ type: 'press', action, confirmed: true }); }
+      }, 50) };
+    });
+    window.addEventListener('pointerup', endHold);
+    window.addEventListener('pointercancel', endHold);
+
+    // ------------------------------------------------------------ side pane
+
+    const opt = (v, l, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(l)}</option>`;
+
+    const FIXED = { mode: 'Master mode', status: 'Ship and link', shields: 'Shield level and faces', power: 'Power per system', weapons: 'Preset, weapons, countermeasures', fuel: 'Hydrogen and quantum fuel', config: 'Configuration settings' };
+    /** Looks this widget may take: some are drawn for one toggle only (the gear lever). */
+    const looksFor = (w) => meta.kinds[w.kind].looks.filter((l) => !meta.lookOnlyFor[l] || (w.bind.kind === 'toggle' && w.bind.id === meta.lookOnlyFor[l]));
+
+    function bindOptions(w) {
+      const kinds = meta.kinds[w.kind].binds;
+      const cur = `${w.bind.kind}:${w.bind.id || w.bind.fn || ''}`;
+      const groups = [];
+      for (const k of kinds) {
+        let list = [];
+        if (k === 'value') list = (w.kind === 'lamp' ? meta.lampValues : cat.values.map((v) => v.id)).map((id) => [id, valueLabel(id)]);
+        if (k === 'toggle') list = cat.toggles.map((t) => [t.id, t.label]);
+        if (k === 'action') { list = cat.gameActions.map((a) => [a.name, `${a.name}${a.confirm ? ' (hold)' : ''}`]); if (w.bind.kind === 'action' && !list.some(([id]) => id === w.bind.id)) list.unshift([w.bind.id, w.bind.id]); }
+        if (k === 'sequence') list = cat.sequences.map((s) => [s.id, s.name]);
+        if (FIXED[k]) list = [['', FIXED[k]]];
+        groups.push(`<optgroup label="${esc(k)}">${list.map(([id, l]) => opt(`${k}:${id}`, l, `${k}:${id}` === cur)).join('')}</optgroup>`);
+      }
+      return groups.join('');
+    }
+
+    function describe(st) {
+      if (st.kind === 'action') return `Game action: ${st.action}`;
+      if (st.kind === 'pause') return `Pause ${st.seconds} s`;
+      if (st.kind === 'mode') return `Master mode to ${st.to}, wait up to ${st.timeoutS || 5} s`;
+      return `${toggleLabel(st.toggle)} ${st.to.toUpperCase()}, wait up to ${st.timeoutS || 5} s`;
+    }
+
+    const KIND_NOTES = {
+      shields: 'Four faces show as front, back, left and right, each with its own strength.',
+      power: "Pips are not in the game's API. Weapons, thrusters and shields have game actions; the other systems are read-only.",
+      config: 'Only coupled, G-safe and the advanced HUD (SCM and NAV) have game actions; the rest are read-only. Which advanced HUD the game toggles is not checked yet.',
+      lever: 'Sets the gear up or down from its reported state; when the state is not reported, a click sends the game\'s toggle.',
+      switch: 'Sets the opposite of the reported state; when the state is not reported, a click sends the game\'s toggle.',
+    };
+
+    function renderPane() {
+      if (!editing || !work || !meta || !cat) return;
+      const w = selected && work.widgets.find((x) => x.id === selected);
+      const d = dirty();
+      if (w) {
+        const k = meta.kinds[w.kind];
+        const seq = w.kind === 'sequence' && cat.sequences.find((s) => s.id === w.bind.id);
+        const canInvert = w.bind.kind === 'value' || w.bind.kind === 'toggle';
+        $('props').innerHTML = `<h2>${esc(k.name)}</h2>
+          <label>Shows <select id="p-bind">${bindOptions(w)}</select></label>
+          <label>Look <select id="p-look">${looksFor(w).map((l) => opt(l, l, l === w.look)).join('')}</select></label>
+          <label>Label <input id="p-label" maxlength="${meta.limits.label}" value="${esc(w.label || '')}" placeholder="default" /></label>
+          ${canInvert && (w.kind === 'lamp' || w.kind === 'toggle') ? `<label class="check">Invert <input type="checkbox" id="p-invert" ${w.bind.invert ? 'checked' : ''} /></label>` : ''}
+          ${canGrey(w) ? `<label class="check">Hide when this ship lacks it <input type="checkbox" id="p-hide" ${w.hideUnsupported ? 'checked' : ''} /></label>
+          <p class="note">Greyed by default when the ship does not report it. Hidden in use only; here it stays, marked.</p>` : ''}
+          <p class="note">At column ${w.x + 1}, row ${w.y + 1}; ${w.w} x ${w.h} cells${k.min.w > 1 || k.min.h > 1 ? ` (at least ${k.min.w} x ${k.min.h})` : ''}</p>
+          ${KIND_NOTES[w.look] || KIND_NOTES[w.kind] ? `<p class="note">${esc(KIND_NOTES[w.look] || KIND_NOTES[w.kind])}</p>` : ''}
+          ${seq ? `<p class="note">Steps:</p><ol>${seq.steps.map((st) => `<li>${esc(describe(st))}</li>`).join('')}</ol>` : ''}
+          <div class="row" style="margin-top:8px"><button class="btn danger" id="p-remove" type="button">Remove widget</button><button class="btn" id="p-deselect" type="button">Tab settings</button></div>`;
+      } else {
+        const i = dash.tabs.findIndex((t) => t.id === work.id);
+        const lock = d ? 'disabled title="Save or revert first"' : '';
+        $('props').innerHTML = `<h2>Tab</h2>
+          <label>Name <input id="t-name" maxlength="${meta.limits.label}" value="${esc(work.name)}" /></label>
+          <label>Rows <input id="t-rows" type="number" min="${meta.limits.minRows}" max="${meta.limits.maxRows}" value="${work.rows}" /></label>
+          ${themes ? `<label>Theme <select id="t-theme">${themeOptions(work.theme, true)}</select></label>` : ''}
+          <div class="row">
+            <button class="btn" data-t="left" type="button" ${i <= 0 || d ? 'disabled' : ''}>Move left</button>
+            <button class="btn" data-t="right" type="button" ${i < 0 || i >= dash.tabs.length - 1 || d ? 'disabled' : ''}>Move right</button>
+            <button class="btn" data-t="dup" type="button" ${lock}>Duplicate</button>
+            <button class="btn danger" data-t="remove" type="button" ${dash.tabs.length <= 1 || d ? 'disabled' : ''}>Remove</button>
+          </div>
+          <div class="row" style="margin-top:6px"><button class="btn" data-t="starter" type="button" ${lock}>Reset starter tab</button></div>
+          <p class="note">Click a widget to edit it. Drag to move, drag a corner to resize.</p>
+          ${themes ? `<h2 class="sub">Dashboard theme</h2>
+          <label>Theme <select id="d-theme">${themeOptions(dash.theme, false)}</select></label>
+          <div class="row"><button class="btn" data-t="themes" type="button">Edit themes</button></div>
+          <p class="note">The dashboard theme is saved at once. A tab's own theme is saved with Save.</p>` : ''}
+          ${tabPlacementAndBezel(serverTab(work.id))}`;
+      }
+      renderCategories();
+      renderItems();
+    }
+
+    $('props').addEventListener('input', (e) => {
+      const w = selected && work.widgets.find((x) => x.id === selected);
+      if (e.target.id === 'p-label' && w) { const t = e.target.value.trim(); if (t) w.label = e.target.value; else delete w.label; drawAll(); renderBar(); }
+      if (e.target.id === 't-name') { work.name = e.target.value; renderBar(); }
+    });
+    $('props').addEventListener('change', (e) => {
+      const w = selected && work.widgets.find((x) => x.id === selected);
+      const id = e.target.id;
+      if (id === 't-fs') {
+        const p = serverTab(work.id) && serverTab(work.id).placement;
+        if (p) send({ type: 'dash.setPlacement', tab: work.id, placement: { ...p, fullscreen: e.target.checked } });
+        return;
+      }
+      if (id === 'd-theme') { send({ type: 'dash.setTheme', theme: e.target.value }); return; }
+      if (id === 't-theme') {
+        if (e.target.value) work.theme = e.target.value; else delete work.theme;
+        renderBar(); buildGrid(); return;
+      }
+      if (id === 'p-bind' && w) {
+        const [kind, ...rest] = e.target.value.split(':');
+        const bid = rest.join(':');
+        const invert = w.bind.invert && (kind === 'value' || kind === 'toggle');
+        w.bind = FIXED[kind] ? { kind } : { kind, id: bid, ...(invert ? { invert } : {}) };
+        if (!looksFor(w).includes(w.look)) w.look = meta.kinds[w.kind].looks[0];
+      } else if (id === 'p-look' && w) w.look = e.target.value;
+      else if (id === 'p-invert' && w) { if (e.target.checked) w.bind.invert = true; else delete w.bind.invert; }
+      else if (id === 'p-hide' && w) { if (e.target.checked) w.hideUnsupported = true; else delete w.hideUnsupported; }
+      else if (id === 't-rows') {
+        const rows = Number(e.target.value);
+        const need = Math.max(meta.limits.minRows, ...work.widgets.map((x) => x.y + x.h));
+        if (!Number.isInteger(rows) || rows < need || rows > meta.limits.maxRows) { notice(`Rows must be ${need} to ${meta.limits.maxRows} for the widgets on this tab`, 'bad'); e.target.value = work.rows; return; }
+        work.rows = rows;
+        buildGrid();
+      } else return;
+      renderBar(); renderPane(); drawAll();
+    });
+    $('props').addEventListener('click', async (e) => {
+      if (e.target.id === 'p-remove') {
+        const item = grid.getGridItems().find((x) => x.gridstackNode.id === selected);
+        work.widgets = work.widgets.filter((x) => x.id !== selected);
+        selected = null;
+        if (item) grid.removeWidget(item);
+        renderBar(); renderPane(); return;
+      }
+      if (e.target.id === 'p-deselect') { selected = null; drawAll(); renderPane(); return; }
+      const t = e.target.closest('[data-t]');
+      if (!t) return;
+      const i = dash.tabs.findIndex((x) => x.id === work.id);
+      const act = t.dataset.t;
+      const saved = serverTab(work.id);
+      if (act === 'themes') { openThemePanel(); return; }
+      if (act === 'detach') { if (saved) detach(saved); else notice('Save the new tab before detaching it', 'bad'); }
+      else if (act === 'forget') send({ type: 'dash.setPlacement', tab: work.id, placement: null });
+      else if (act === 'map') { if (saved) openBezelPanel(work.id); else notice('Save the new tab before mapping bezel buttons', 'bad'); }
+      else if (act === 'clear-bezel') {
+        const c = await ask('Clear bezel buttons', `<p>Clear all ${saved.bezel.buttons.length} bezel buttons mapped on ${esc(saved.name)}?</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Clear all', value: 'clear', cls: 'danger' }]);
+        if (c === 'clear') send({ type: 'dash.setBezel', tab: work.id, bezel: null });
+      } else if (act === 'left' || act === 'right') send({ type: 'dash.moveTab', tab: work.id, to: i + (act === 'left' ? -1 : 1) });
+      else if (act === 'dup') send({ type: 'dash.duplicateTab', tab: work.id }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); renderBar(); renderPane(); buildGrid(); } });
+      else if (act === 'starter') {
+        const c = await ask('Reset starter tab', '<p>Put the Main tab back as shipped? Your changes to it are lost; other tabs stay as they are.</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Reset', value: 'reset', cls: 'danger' }]);
+        if (c === 'reset') send({ type: 'dash.resetStarter' }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); renderBar(); renderPane(); buildGrid(); } });
+      } else if (act === 'remove') {
+        const c = await ask('Remove tab', `<p>Remove the tab ${esc(work.name)} and its ${work.widgets.length} widgets? This cannot be undone, except by importing an exported file.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
+        if (c === 'remove') send({ type: 'dash.removeTab', tab: work.id });
+      }
+    });
+
+    // ------------------------------------------------------------ palette
+
+    const CATEGORIES = [['', 'All kinds'], ['lamp', 'Lamps'], ['readout', 'Readouts'], ['toggle', 'Toggles'], ['action', 'Action buttons'], ['sequence', 'Sequence buttons'], ['mode', 'Master mode'], ['status', 'Status strip'],
+      ['shields', 'Shield faces'], ['power', 'Power'], ['weapons', 'Weapons'], ['fuel', 'Fuel'], ['config', 'Configuration']];
+    function renderCategories() {
+      const sel = $('cat');
+      if (sel.options.length) return;
+      sel.innerHTML = CATEGORIES.map(([v, l]) => opt(v, l, false)).join('');
+    }
+
+    function paletteItems() {
+      const items = [];
+      for (const id of meta.lampValues) items.push({ kind: 'lamp', bind: { kind: 'value', id }, text: valueLabel(id) });
+      for (const t of cat.toggles) items.push({ kind: 'lamp', bind: { kind: 'toggle', id: t.id }, text: t.label });
+      for (const v of cat.values) items.push({ kind: 'readout', bind: { kind: 'value', id: v.id }, text: v.label });
+      for (const t of cat.toggles) items.push({ kind: 'toggle', bind: { kind: 'toggle', id: t.id }, text: t.label });
+      for (const t of cat.toggles) items.push({ kind: 'toggle', bind: { kind: 'toggle', id: t.id }, text: t.label, look: 'switch', extra: 'light switch' });
+      for (const [look, id] of Object.entries(meta.lookOnlyFor)) items.push({ kind: 'toggle', bind: { kind: 'toggle', id }, text: toggleLabel(id), look, extra: 'gear lever', size: meta.leverSize });
+      for (const a of cat.gameActions) items.push({ kind: 'action', bind: { kind: 'action', id: a.name }, text: a.name, extra: a.confirm ? 'hold' : a.category });
+      for (const s of cat.sequences) items.push({ kind: 'sequence', bind: { kind: 'sequence', id: s.id }, text: s.name });
+      items.push({ kind: 'mode', bind: { kind: 'mode' }, text: 'NAV / SCM selector' });
+      items.push({ kind: 'status', bind: { kind: 'status' }, text: 'Ship name and link' });
+      for (const k of ['shields', 'power', 'weapons', 'fuel', 'config']) items.push({ kind: k, bind: { kind: k }, text: FIXED[k] });
+      return items;
+    }
+
+    let shownItems = [];
+    function renderItems() {
+      if (!editing || !meta || !cat) return;
+      const q = $('q').value.trim().toLowerCase();
+      const c = $('cat').value;
+      const all = paletteItems();
+      shownItems = all.filter((it) => (!c || it.kind === c) && (!q || `${it.text} ${it.bind.id || it.bind.fn || ''} ${meta.kinds[it.kind].name} ${it.extra || ''}`.toLowerCase().includes(q)));
+      $('count').textContent = shownItems.length === all.length ? `${all.length} to choose from` : `${shownItems.length} of ${all.length} shown`;
+      $('items').innerHTML = shownItems.map((it, i) => `<button class="item" data-i="${i}" type="button"><span>${esc(it.text)}</span><small>${esc(meta.kinds[it.kind].name)}${it.extra ? `, ${esc(it.extra)}` : ''}</small></button>`).join('');
+    }
+    $('q').addEventListener('input', renderItems);
+    $('cat').addEventListener('change', renderItems);
+
+    function freeSpot(w, h) {
+      const taken = (x, y) => work.widgets.some((o) => x < o.x + o.w && o.x < x + w && y < o.y + o.h && o.y < y + h);
+      for (let y = 0; y + h <= work.rows; y++) for (let x = 0; x + w <= meta.limits.columns; x++) if (!taken(x, y)) return { x, y };
+      return null;
+    }
+
+    $('items').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-i]');
+      if (!b) return;
+      const it = shownItems[Number(b.dataset.i)];
+      if (work.widgets.length >= meta.limits.widgets) { notice(`A tab holds at most ${meta.limits.widgets} widgets`, 'bad'); return; }
+      const k = meta.kinds[it.kind];
+      const size = it.size || k.size;
+      const at = freeSpot(size.w, size.h);
+      if (!at) { notice(`No free ${size.w} x ${size.h} space on this tab. Make room, or add rows in Tab settings.`, 'bad'); return; }
+      let n = 1;
+      while (work.widgets.some((x) => x.id === `${it.kind}-${n}`)) n++;
+      const w = { id: `${it.kind}-${n}`, kind: it.kind, x: at.x, y: at.y, w: size.w, h: size.h, bind: clone(it.bind), look: it.look || k.looks[0] };
+      work.widgets.push(w);
+      selected = w.id;
+      buildGrid();
+      renderBar(); renderPane();
+    });
+
+    // ------------------------------------------------------------ detach and placement
+
+    // In the Hardpoint app, window.scApp opens tabs in native windows on a display; a plain browser has none.
+    const APP = window.scApp || null;
+    const hasScreens = () => typeof window.getScreenDetails === 'function';
+    const tabUrl = (tab, fs) => `/dash?tab=${encodeURIComponent(tab.id)}&kiosk=1${fs ? '&fs=1' : ''}`;
+    const winName = (tab) => `sc-dash-${tab.id}`;
+    const screenText = (s) => `${s.width} x ${s.height} at ${s.left}, ${s.top}${s.isPrimary ? ', primary' : ''}${s.isInternal ? ', built in' : ''}`;
+
+    /** Open a tab's kiosk window on a screen, sized to it; `fullscreen` is a hint the browser may ignore. */
+    function openOn(tab, s, fs) {
+      const f = `popup,left=${s.availLeft},top=${s.availTop},width=${s.availWidth},height=${s.availHeight}${fs ? ',fullscreen' : ''}`;
+      return window.open(tabUrl(tab, fs), winName(tab), f);
+    }
+
+    async function screenDetails() {
+      if (!hasScreens()) return { why: 'This browser cannot place windows on a chosen display (it has no Window Management API).' };
+      try { return { details: await window.getScreenDetails() }; } catch { return { why: 'Permission to place windows on your displays was not given. You can allow it in the site settings (Window management).' }; }
+    }
+
+    async function detach(tab) {
+      if (!tab) return;
+      if (APP) return detachInApp(tab);
+      const { details, why } = await screenDetails();
+      if (!details) return detachByHand(tab, why);
+      const screens = details.screens;
+      const labels = screens.map((s) => s.label || '');
+      const wanted = tab.placement ? labels.indexOf(tab.placement.displayLabel) : -1;
+      const pick = wanted >= 0 ? wanted : Math.max(0, screens.findIndex((s) => s !== details.currentScreen));
+      const list = screens.map((s, i) => `<label class="screen"><input type="radio" name="scr" value="${i}" ${i === pick ? 'checked' : ''} />` +
+        `<b>${esc(s.label || 'Unnamed display')}</b><small>${esc(screenText(s))}${s === details.currentScreen ? ', this window' : ''}</small></label>`).join('');
+      const body = `<p>Choose the display for ${esc(tab.name)}. It opens in use mode, with the cursor hidden.</p><div class="screens">${list}</div>` +
+        `<label class="check"><input type="checkbox" id="d-fs" ${!tab.placement || tab.placement.fullscreen ? 'checked' : ''} /> Full screen</label>` +
+        `<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>` +
+        (tab.placement && wanted < 0 ? `<p class="warn">The remembered display, ${esc(tab.placement.displayLabel)}, is not connected.</p>` : '');
+      const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open on display', value: 'open', cls: 'primary' }]);
+      if (c !== 'open') return;
+      const i = Number(($('dlg-body').querySelector('input[name=scr]:checked') || {}).value || 0);
+      const fs = $('d-fs').checked;
+      const s = screens[i];
+      if (!openOn(tab, s, fs)) { notice('The browser blocked the new window. Allow pop-ups for this page and try again.', 'bad'); return; }
+      if (!$('d-keep').checked) return;
+      const label = (s.label || '').trim();
+      // Identity is the display's name; a display with no name, or a name two share, cannot be told apart.
+      if (!label) { notice('This display has no name, so the placement cannot be remembered', 'bad'); return; }
+      if (labels.filter((l) => l === s.label).length > 1) notice(`Two displays are named ${label}; restore may pick either`, 'bad');
+      send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
+    }
+
+    /** The app's displays come with their names (the monitor's own name), so the picker is the same. */
+    async function detachInApp(tab) {
+      const { displays, shared } = await APP.request('displays');
+      if (!displays.length) { notice('The app sees no displays', 'bad'); return; }
+      const labels = displays.map((d) => d.label);
+      const wanted = tab.placement ? labels.indexOf(tab.placement.displayLabel) : -1;
+      const pick = wanted >= 0 ? wanted : Math.max(0, displays.findIndex((d) => !d.primary));
+      const text = (d) => `${d.width} x ${d.height} at ${d.left}, ${d.top}${d.primary ? ', primary' : ''}${d.builtin ? ', built in' : ''}`;
+      const list = displays.map((d, i) => `<label class="screen"><input type="radio" name="scr" value="${i}" ${i === pick ? 'checked' : ''} />` +
+        `<b>${esc(d.label || 'Unnamed display')}</b><small>${esc(text(d))}</small></label>`).join('');
+      const body = `<p>Choose the display for ${esc(tab.name)}. It opens in use mode, with the cursor hidden, and never takes the focus from the game.</p><div class="screens">${list}</div>` +
+        `<label class="check"><input type="checkbox" id="d-fs" ${!tab.placement || tab.placement.fullscreen ? 'checked' : ''} /> Full screen</label>` +
+        `<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>` +
+        (tab.placement && wanted < 0 ? `<p class="warn">The remembered display, ${esc(tab.placement.displayLabel)}, is not connected.</p>` : '');
+      const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open on display', value: 'open', cls: 'primary' }]);
+      if (c !== 'open') return;
+      const d = displays[Number(($('dlg-body').querySelector('input[name=scr]:checked') || {}).value || 0)];
+      const fs = $('d-fs').checked;
+      const label = (d.label || '').trim();
+      if (!label) { notice('This display has no name, so the app cannot place a window on it by name', 'bad'); return; }
+      if (shared.includes(d.label)) { notice(`Two displays are named ${label}, so the app cannot tell them apart`, 'bad'); return; }
+      const r = await APP.request('open', { tab: tab.id, displayLabel: d.label, fullscreen: fs });
+      if (!r.ok) { notice(r.text, 'bad'); return; }
+      if ($('d-keep').checked) send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
+    }
+
+    async function detachByHand(tab, why) {
+      const body = `<p>${esc(why)}</p><p>${esc(tab.name)} opens in a new window. Drag it to the display you want, then press F11 for full screen.</p>` +
+        '<p class="warn">Without the API the display cannot be remembered for this tab.</p>';
+      const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open window', value: 'open', cls: 'primary' }]);
+      if (c === 'open' && !window.open(tabUrl(tab, false), winName(tab), 'popup,width=1024,height=768')) notice('The browser blocked the new window. Allow pop-ups for this page and try again.', 'bad');
+    }
+
+    async function restoreDetached() {
+      if (APP) {
+        const { tabs } = await APP.request('restore');
+        const text = { open: 'opened', missing: 'display not connected', ambiguous: 'two displays have this name', failed: 'could not open' };
+        const body = `<ul class="list">${tabs.map((t) => `<li><span>${esc(t.name)}</span><small class="${t.state === 'open' ? '' : 'bad'}">${esc(t.displayLabel)}: ${esc(text[t.state] || t.state)}</small></li>`).join('')}</ul>`;
+        await ask('Restore detached tabs', body, [{ text: 'Close', value: 'close', cls: 'primary' }]);
+        return;
+      }
+      const placed = restorable();
+      const { details, why } = await screenDetails();
+      if (!details) {
+        await ask('Restore detached tabs', `<p>${esc(why)}</p><p>Detach each tab by hand instead: it opens in a window you drag to its display.</p>`, [{ text: 'Close', value: 'close' }]);
+        return;
+      }
+      const screenOf = (t) => details.screens.find((s) => s.label === t.placement.displayLabel);
+      // A browser may allow one new window per click, so each one left over gets its own button.
+      const state = new Map();
+      for (const t of placed) {
+        const s = screenOf(t);
+        state.set(t.id, !s ? 'missing' : openOn(t, s, t.placement.fullscreen) ? 'open' : 'blocked');
+      }
+      for (;;) {
+        const text = { open: 'opened', missing: 'display not connected', blocked: 'blocked, press Open' };
+        const body = `<ul class="list">${placed.map((t) => `<li><span>${esc(t.name)}</span><small class="${state.get(t.id) === 'open' ? '' : 'bad'}">${esc(t.placement.displayLabel)}: ${text[state.get(t.id)]}</small></li>`).join('')}</ul>`;
+        const blocked = placed.filter((t) => state.get(t.id) === 'blocked');
+        const c = await ask('Restore detached tabs', body, [...blocked.map((t) => ({ text: `Open ${t.name}`, value: t.id })), { text: 'Close', value: 'close', cls: blocked.length ? '' : 'primary' }]);
+        const t = placed.find((x) => x.id === c);
+        if (!t) return;
+        state.set(t.id, openOn(t, screenOf(t), t.placement.fullscreen) ? 'open' : 'blocked');
+      }
+    }
+
+    /** The placed tabs to open: this dashboard's, and the generic ones whose name it lacks. */
+    const restorable = () => [...dash.tabs, ...(genericBoard ? genericBoard.tabs.filter((g) => !dash.tabs.some((t) => t.name === g.name)) : [])].filter((t) => t.placement);
+
+    function tabPlacementAndBezel(t) {
+      if (!t) return '<h2 class="sub">Display and bezel</h2><p class="note">Save the new tab first to detach it or map bezel buttons.</p>';
+      const p = t.placement;
+      const b = t.bezel;
+      const MAX_SHOWN = 6;
+      const maps = b ? b.buttons.slice(0, MAX_SHOWN).map((m) => `<li><b>${m.button}</b><span>${esc(bezelText(m))}</span></li>`).join('') : '';
+      return `<h2 class="sub">Display</h2>
+        ${p ? `<p class="note">Opens on <b>${esc(p.displayLabel)}</b>${p.fullscreen ? ', full screen' : ', in a window'}.</p>
+          <label class="check">Full screen <input type="checkbox" id="t-fs" ${p.fullscreen ? 'checked' : ''} /></label>`
+          : '<p class="note">No display yet. Detach the tab and choose one to remember it.</p>'}
+        <div class="row"><button class="btn" data-t="detach" type="button">Detach</button>${p ? '<button class="btn" data-t="forget" type="button">Forget display</button>' : ''}</div>
+        <h2 class="sub">Bezel buttons</h2>
+        ${b && b.buttons.length ? `<p class="note">${b.buttons.length} of ${meta.limits.bezelButtons} on ${esc(b.gamepadId)}</p><ul class="maps">${maps}</ul>${b.buttons.length > MAX_SHOWN ? `<p class="note">and ${b.buttons.length - MAX_SHOWN} more</p>` : ''}`
+          : '<p class="note">None mapped. Bezel buttons work on the detached tab.</p>'}
+        <div class="row"><button class="btn" data-t="map" type="button">Map bezel buttons</button>${b ? '<button class="btn danger" data-t="clear-bezel" type="button">Clear all</button>' : ''}</div>
+        <p class="note">Display and bezel changes are saved at once, not with Save.</p>`;
+    }
+
+    // ------------------------------------------------------------ dashboards: generic and per ship (Rust service)
+
+    // What the panel was last drawn from, so a values push that changes nothing here leaves it alone.
+    let dashPanelKey = '';
+    function openDashPanel() {
+      dashPanel = true;
+      renamingBoard = null;
+      renderDashPanel(true);
+      renderBar();
+    }
+    function closeDashPanel() {
+      dashPanel = false;
+      renamingBoard = null;
+      $('dash-panel').hidden = true;
+      renderBar();
+    }
+
+    function renderDashPanel(force) {
+      const el = $('dash-panel');
+      if (!dashPanel || !boards || !board) { el.hidden = true; return; }
+      const ship = (vals && vals.ship) || null;
+      const key = JSON.stringify([ship, boards, board.id, renamingBoard, themes && themes.user.length]);
+      if (!force && key === dashPanelKey && !el.hidden) return;
+      dashPanelKey = key;
+      const list = boards.list;
+      const match = ship && ship.dashboard ? list.find((b) => b.id === ship.dashboard) : null;
+      const themeName = (id) => (themeById(id) || { name: id }).name;
+      let shipHtml;
+      if (!ship) shipHtml = '<p class="note">Not in a ship. The ship you get into shows here, with its dashboard.</p>';
+      else {
+        shipHtml = `<p class="ship"><b>${esc(ship.key)}</b><small>${esc(ship.className)}</small></p>`;
+        if (match && match.id === board.id) shipHtml += `<p class="note">${esc(match.name)} is this ship's dashboard and is on screen.</p>`;
+        else if (match) shipHtml += `<div class="row"><button class="btn primary" data-dp="select" data-id="${esc(match.id)}" type="button">Show ${esc(match.name)}</button></div>`;
+        else {
+          shipHtml += `<div class="make"><label>Copy from <select id="dp-from">${list.map((b) => opt(b.id, b.name, b.id === board.id)).join('')}</select></label>` +
+            `<button class="btn primary" data-dp="create" type="button" ${list.length >= meta.limits.dashboards ? 'disabled' : ''}>Create a dashboard for this ship</button></div>` +
+            '<p class="note">The copy keeps its tab names, so detached tabs follow it. It starts in the maker\'s theme where there is one (Drake for a Drake ship).</p>';
+        }
+      }
+      const rows = list.map((b) => {
+        const on = b.id === board.id;
+        const what = b.generic ? 'Generic: for any ship without its own' : b.ship ? `${b.ship.manufacturer ? `${b.ship.manufacturer} / ` : ''}${b.ship.model}` : 'No ship';
+        const facts = `${what} · ${b.tabs} ${b.tabs === 1 ? 'tab' : 'tabs'}${b.theme ? ` · ${themeName(b.theme)}` : ''}`;
+        if (renamingBoard === b.id) {
+          return `<div class="drow on"><span class="what"><input id="dp-name" maxlength="${meta.limits.label}" value="${esc(b.name)}" aria-label="Dashboard name" /><small>${esc(facts)}</small></span>` +
+            `<span class="acts"><button class="btn primary" data-dp="rename-ok" data-id="${esc(b.id)}" type="button">OK</button><button class="btn" data-dp="rename-cancel" type="button">Cancel</button></span></div>`;
+        }
+        return `<div class="drow ${on ? 'on' : ''}"><span class="what"><b>${esc(b.name)}</b><small>${esc(facts)}</small></span><span class="acts">` +
+          (on ? '<span class="here">On screen</span>' : `<button class="btn" data-dp="select" data-id="${esc(b.id)}" type="button">Show</button>`) +
+          `<button class="btn" data-dp="rename" data-id="${esc(b.id)}" type="button">Rename</button>` +
+          `<button class="btn" data-dp="dup" data-id="${esc(b.id)}" type="button" ${list.length >= meta.limits.dashboards ? 'disabled' : ''}>Duplicate</button>` +
+          (b.generic ? '' : `<button class="btn danger" data-dp="remove" data-id="${esc(b.id)}" type="button">Remove</button>`) + '</span></div>';
+      }).join('');
+      el.innerHTML = '<h3>Dashboards</h3>' +
+        `<section><h4>Ship</h4>${shipHtml}</section>` +
+        `<section><h4>Dashboards</h4><div class="dlist">${rows}</div>${boards.pinned ? '<p class="note">Picked by hand: it stays until you change ship.</p>' : ''}</section>` +
+        `<section><label class="check"><input type="checkbox" id="dp-switch" ${boards.switchOnShipChange ? 'checked' : ''} /> Switch dashboard when I change ship</label>` +
+        '<p class="note">On: a different ship, recognised for 2 s, shows its own dashboard, or the generic one. Getting out keeps the dashboard on screen, and a switch waits for a running sequence to end. Off: the ship\'s dashboard is offered above.</p></section>' +
+        '<section><h4>Functions a ship lacks</h4><p class="note">Controls for what the ship does not report are greyed, learned per ship class and game build. Reset to learn again.</p>' +
+        `<div class="row">${ship ? `<button class="btn" data-dp="reset-ship" type="button">Reset for ${esc(ship.model)}</button>` : ''}<button class="btn" data-dp="reset-all" type="button">Reset for every ship</button></div></section>` +
+        (boards.fileProblem ? `<p class="warn">${esc(boards.fileProblem)}</p>` : '') +
+        '<div class="row end"><button class="btn primary" data-dp="done" type="button">Done</button></div>';
+      el.hidden = false;
+      const name = $('dp-name');
+      if (name && !name._focused) { name._focused = true; name.focus(); name.select(); }
+    }
+
+    $('dash-panel').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-dp]');
+      if (!b) return;
+      const act = b.dataset.dp, id = b.dataset.id;
+      const ship = vals && vals.ship;
+      const target = boards && boards.list.find((x) => x.id === id);
+      if (act === 'done') return closeDashPanel();
+      if (act === 'select') {
+        if (!(await confirmLeave())) return;
+        send({ type: 'dash.select', dashboard: id });
+      } else if (act === 'create') {
+        if (!(await confirmLeave())) return;
+        send({ type: 'dash.createForShip', from: $('dp-from').value }, (r) => { if (r && r.dashboard) notice(`Made ${r.dashboard.name}`, 'ok'); });
+      } else if (act === 'dup') {
+        if (!(await confirmLeave())) return;
+        send({ type: 'dash.duplicate', dashboard: id }, (r) => { if (r && r.dashboard) notice(`Made ${r.dashboard.name}`, 'ok'); });
+      } else if (act === 'rename') { renamingBoard = id; renderDashPanel(true); }
+      else if (act === 'rename-cancel') { renamingBoard = null; renderDashPanel(true); }
+      else if (act === 'rename-ok') {
+        send({ type: 'dash.rename', dashboard: id, name: $('dp-name').value }, (r) => { if (r && r.problems && !r.problems.length) { renamingBoard = null; renderDashPanel(true); } });
+      } else if (act === 'remove' && target) {
+        const c = await ask('Remove dashboard', `<p>Remove the dashboard ${esc(target.name)} and its ${target.tabs} ${target.tabs === 1 ? 'tab' : 'tabs'}? This cannot be undone, except by importing an exported file.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
+        if (c === 'remove') send({ type: 'dash.remove', dashboard: id });
+      } else if (act === 'reset-ship' && ship) {
+        send({ type: 'support.reset', className: ship.className }, () => notice(`Learning ${ship.model} again`, 'ok'));
+      } else if (act === 'reset-all') {
+        const c = await ask('Reset for every ship', '<p>Forget which functions every ship lacks? Each ship is learned again the next time you are in it (10 s).</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Reset', value: 'reset', cls: 'danger' }]);
+        if (c === 'reset') send({ type: 'support.reset' }, () => notice('Learning every ship again', 'ok'));
+      }
+    });
+    $('dash-panel').addEventListener('change', (e) => {
+      if (e.target.id === 'dp-switch') send({ type: 'dash.setSwitch', on: e.target.checked });
+    });
+
+    // ------------------------------------------------------------ theme editor
+
+    const FONT_NAMES = { condensed: 'Condensed', mono: 'Monospaced', sans: 'Plain sans' };
+    const BAR_NAMES = { segmented: 'Segmented', solid: 'Solid' };
+    const TOKEN_NAMES = {
+      bg: 'Background', panel: 'Panel', 'panel-2': 'Raised panel', line: 'Lines', fg: 'Text', dim: 'Labels', faint: 'Faint text', value: 'Values',
+      accent: 'Edge accent', select: 'Selected', 'select-fg': 'Selected text', 'title-bg': 'Title bar', 'title-fg': 'Title text', bar: 'Bars',
+      ok: 'Good', warn: 'Caution', bad: 'Warning', off: 'Off',
+      'lamp-off-bg': 'Lamp off', 'lamp-off-fg': 'Lamp off text', 'lamp-nominal-bg': 'Lamp normal', 'lamp-nominal-fg': 'Lamp normal text', 'lamp-on-bg': 'Lamp on', 'lamp-on-fg': 'Lamp on text',
+      'lamp-minor-bg': 'Lamp caution', 'lamp-minor-fg': 'Lamp caution text', 'lamp-major-bg': 'Lamp warning', 'lamp-major-fg': 'Lamp warning text',
+      'input-bg': 'Field', 'input-fg': 'Field text', 'input-border': 'Field edge', 'input-placeholder': 'Field hint', 'input-focus': 'Field focus',
+    };
+
+    /** WCAG 2 relative luminance and contrast, to warn of a pair that is hard to read; never a reason to refuse. */
+    function luminance(hex) {
+      const h = sixDigits(hex).slice(1);
+      const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    }
+    const contrastOf = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    // Text needs 4.5:1; a field's hint and focus ring 3:1.
+    const CONTRAST_PAIRS = [['input-fg', 'input-bg', 4.5], ['fg', 'bg', 4.5], ['fg', 'panel', 4.5], ['value', 'panel', 4.5], ['title-fg', 'title-bg', 4.5], ['select-fg', 'select', 4.5], ['input-placeholder', 'input-bg', 3], ['input-focus', 'input-bg', 3]];
+    function contrastWarnings(t) {
+      return CONTRAST_PAIRS.filter(([a, b]) => HEX.test(t.colors[a] || '') && HEX.test(t.colors[b] || ''))
+        .map(([a, b, min]) => [a, b, min, contrastOf(t.colors[a], t.colors[b])])
+        .filter(([, , min, r]) => r < min)
+        .map(([a, b, min, r]) => `${TOKEN_NAMES[a] || a} on ${TOKEN_NAMES[b] || b}: ${r.toFixed(1)}:1, ${min}:1 needed`);
+    }
+    const contrastHtml = (t) => { const w = contrastWarnings(t); return w.length ? `<b>Hard to read</b> (you can still save):<ul>${w.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''; };
+
+    function themeOptions(cur, forTab) {
+      const dashName = (themeById(dash.theme) || themeById(themes.defaultTheme)).name;
+      const head = forTab ? opt('', `Dashboard theme (${dashName})`, !themeById(cur)) : '';
+      const sel = forTab ? cur : (themeById(cur) ? cur : themes.defaultTheme);
+      const group = (label, list) => (list.length ? `<optgroup label="${esc(label)}">${list.map((t) => opt(t.id, t.name, t.id === sel)).join('')}</optgroup>` : '');
+      return head + group('Built in', themes.builtIn) + group('Yours', themes.user);
+    }
+
+    /** A colour input takes #rrggbb only: #rgb is spelled out and the alpha of #rrggbbaa dropped. */
+    const sixDigits = (v) => (v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join('')}` : v.slice(0, 7)).toLowerCase();
+
+    // The theme selected in the editor; its draft (themeDraft) is shown on the page while the editor is open.
+    let themeEdit = null;
+    const themeDirty = () => themeDraft && !isBuiltInTheme(themeDraft.id) && JSON.stringify(themeDraft) !== JSON.stringify(themeById(themeDraft.id));
+
+    function selectTheme(id) {
+      const t = themeById(id) || themeFor(shown());
+      themeEdit = { sel: t.id };
+      themeDraft = clone(t);
+      syncTheme(); drawAll(); renderThemePanel();
+    }
+    function openThemePanel() {
+      if (!themes) return;
+      $('theme-panel').hidden = false;
+      document.body.classList.add('theming');
+      selectTheme(themeFor(shown()).id);
+      requestAnimationFrame(fit);
+    }
+    /** A theme the service just made or saved, ahead of its themes push. */
+    function rememberTheme(t) {
+      const i = themes.user.findIndex((x) => x.id === t.id);
+      if (i >= 0) themes.user[i] = t; else themes.user.push(t);
+    }
+    async function closeThemePanel() {
+      if (themeDirty() && (await ask('Unsaved theme', `<p>${esc(themeDraft.name)} has changes that are not saved.</p>`, [{ text: 'Keep editing', value: 'keep' }, { text: 'Discard', value: 'discard', cls: 'danger' }])) !== 'discard') return;
+      themeEdit = null;
+      themeDraft = null;
+      $('theme-panel').hidden = true;
+      document.body.classList.remove('theming');
+      syncTheme(); drawAll(); renderPane();
+      requestAnimationFrame(fit);
+    }
+
+    function renderThemePanel() {
+      if (!themeEdit || !themes) return;
+      if (!themeDraft || !themeById(themeDraft.id)) { selectTheme(themes.defaultTheme); return; }
+      const t = themeDraft;
+      const own = !isBuiltInTheme(t.id);
+      const usedBy = (id) => [dash.theme === id ? 'the dashboard' : '', ...dash.tabs.filter((x) => x.theme === id).map((x) => x.name)].filter(Boolean);
+      const rows = allThemes().map((x) => {
+        const used = usedBy(x.id);
+        const from = themeById(x.base);
+        return `<div class="trow ${x.id === t.id ? 'on' : ''}" data-th="${esc(x.id)}"><span class="what"><b>${esc(x.name)}</b>` +
+          `<small>${isBuiltInTheme(x.id) ? 'Built in' : `Yours, from ${esc(from ? from.name : x.base)}`}${used.length ? `; used by ${esc(used.join(', '))}` : ''}</small></span>` +
+          `<span class="acts"><button class="btn" data-th-do="dup" data-id="${esc(x.id)}" type="button" ${themes.user.length >= themes.limits.themes ? 'disabled' : ''}>Duplicate</button>` +
+          `${isBuiltInTheme(x.id) ? '' : `<button class="btn danger" data-th-do="remove" data-id="${esc(x.id)}" type="button">Remove</button>`}</span></div>`;
+      }).join('');
+      const editor = own
+        ? `<div class="ted">
+            <label>Name <input id="th-name" maxlength="${themes.limits.name}" value="${esc(t.name)}" /></label>
+            <label>Font <select id="th-font">${themes.fonts.map((f) => opt(f, FONT_NAMES[f] || f, f === t.font)).join('')}</select></label>
+            <label>Bars <select id="th-bars">${themes.bars.map((b) => opt(b, BAR_NAMES[b] || b, b === t.bars)).join('')}</select></label>
+            <label class="check">Zeros <span><input type="checkbox" id="th-zeros" ${t.leadingZeros ? 'checked' : ''} /> dimmed leading zeros (0042)</span></label>
+            <div class="colors">${themes.colorTokens.map((k) => `<label class="col"><span>${esc(TOKEN_NAMES[k] || k)}</span><input type="color" data-c="${esc(k)}" value="${esc(sixDigits(t.colors[k]))}" /><input class="hex" data-h="${esc(k)}" value="${esc(t.colors[k])}" maxlength="9" spellcheck="false" /></label>`).join('')}</div>
+            <div id="th-contrast" class="cwarn">${contrastHtml(t)}</div>
+            <p class="note">Colours are #rgb, #rrggbb or #rrggbbaa. Shapes and widget skins come from the theme it was made from.</p>
+            <div class="row"><button class="btn primary" data-th-do="save" type="button" ${themeDirty() ? '' : 'disabled'}>Save theme</button><button class="btn" data-th-do="revert" type="button" ${themeDirty() ? '' : 'disabled'}>Revert</button></div>
+          </div>`
+        : `<p class="note ted">${esc(t.name)} is built in and cannot be changed. Duplicate it to make a theme of your own, then edit its colours.</p>`;
+      $('theme-panel').innerHTML = `<h3>Themes</h3>
+        <div class="tlist">${rows}</div>
+        <p class="note">${themes.user.length} of ${themes.limits.themes} of your own. The page shows the selected theme while this is open.</p>
+        ${editor}
+        <div class="row end"><button class="btn primary" data-th-do="done" type="button">Done</button></div>`;
+    }
+
+    /** After a draft change: show it, and only touch the buttons, so typing keeps its focus. */
+    function themeChanged() {
+      syncTheme(); drawAll();
+      for (const b of $('theme-panel').querySelectorAll('[data-th-do=save], [data-th-do=revert]')) b.disabled = !themeDirty();
+      const warn = $('th-contrast');
+      if (warn && themeDraft) warn.innerHTML = contrastHtml(themeDraft);
+    }
+
+    $('theme-panel').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-th-do]');
+      const act = b && b.dataset.thDo;
+      if (!b) {
+        const row = e.target.closest('[data-th]');
+        if (!row || row.dataset.th === themeDraft.id) return;
+        if (themeDirty() && (await ask('Unsaved theme', `<p>${esc(themeDraft.name)} has changes that are not saved.</p>`, [{ text: 'Keep editing', value: 'keep' }, { text: 'Discard', value: 'discard', cls: 'danger' }])) !== 'discard') return;
+        selectTheme(row.dataset.th);
+        return;
+      }
+      if (act === 'done') return closeThemePanel();
+      if (act === 'revert') { themeDraft = clone(themeById(themeDraft.id)); renderThemePanel(); themeChanged(); return; }
+      if (act === 'save') {
+        send({ type: 'theme.save', theme: themeDraft }, (r) => { if (r && r.theme) { notice('Theme saved', 'ok'); rememberTheme(r.theme); themeDraft = clone(r.theme); renderThemePanel(); } });
+        return;
+      }
+      const id = b.dataset.id;
+      if (act === 'dup') {
+        if (themeDirty() && (await ask('Unsaved theme', `<p>${esc(themeDraft.name)} has changes that are not saved.</p>`, [{ text: 'Keep editing', value: 'keep' }, { text: 'Discard', value: 'discard', cls: 'danger' }])) !== 'discard') return;
+        send({ type: 'theme.duplicate', theme: id }, (r) => { if (r && r.theme) { rememberTheme(r.theme); selectTheme(r.theme.id); } });
+      } else if (act === 'remove') {
+        const t = themeById(id);
+        const c = await ask('Remove theme', `<p>Remove the theme ${esc(t.name)}? Tabs and the dashboard using it go back to the dashboard theme, then RSI.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
+        if (c === 'remove') send({ type: 'theme.remove', theme: id }, (r) => { if (r && !r.problems.length && themeDraft && themeDraft.id === id) selectTheme(themeFor(shown()).id); });
+      }
+    });
+    $('theme-panel').addEventListener('input', (e) => {
+      const el = e.target;
+      if (!themeDraft || isBuiltInTheme(themeDraft.id)) return;
+      if (el.id === 'th-name') themeDraft.name = el.value;
+      else if (el.dataset.c) {
+        themeDraft.colors[el.dataset.c] = el.value;
+        $('theme-panel').querySelector(`[data-h="${el.dataset.c}"]`).value = el.value;
+      } else if (el.dataset.h) {
+        const v = el.value.trim();
+        const ok = HEX.test(v);
+        el.classList.toggle('bad', !ok);
+        if (!ok) return;
+        themeDraft.colors[el.dataset.h] = v.toLowerCase();
+        $('theme-panel').querySelector(`[data-c="${el.dataset.h}"]`).value = sixDigits(v);
+      } else return;
+      themeChanged();
+    });
+    $('theme-panel').addEventListener('change', (e) => {
+      if (!themeDraft || isBuiltInTheme(themeDraft.id)) return;
+      const el = e.target;
+      if (el.id === 'th-font') themeDraft.font = el.value;
+      else if (el.id === 'th-bars') themeDraft.bars = el.value;
+      else if (el.id === 'th-zeros') themeDraft.leadingZeros = el.checked;
+      else return;
+      themeChanged();
+    });
+
+    // ------------------------------------------------------------ fleet panel (Rust service only, draft)
+
+    // The service pushes `fleet` only when it runs a fleet (today only the --fleet-demo mock peers).
+    let fleet = null, fleetBuilt = '', fleetDetail = null, fleetDrag = null;
+    const FLEET_OPEN_KEY = 'sc-dash-fleet-open';
+    let fleetOpen = (() => { try { return localStorage.getItem(FLEET_OPEN_KEY) !== '0'; } catch { return true; } })();
+    const fleetShown = () => Boolean(fleet) && !ONLY;
+    const fleetMember = (id) => fleet && fleet.members.find((m) => m.member === id);
+    const fleetGroupName = (id) => { const g = fleet && fleet.groups.find((x) => x.id === id); return g ? g.name : 'Ungrouped'; };
+    const STATUS_TEXT = { UP: 'Up', DOWNED: 'Downed', DEAD: 'Dead', RESPAWNED: 'Respawned', OFFLINE: 'Offline', UNKNOWN: 'No status' };
+    // Short labels as on the in-game HUD, so two bars fit side by side in every theme's font.
+    const FLEET_BARS = [['ship.shields', 'SHLD', 'Shields'], ['ship.hull', 'HULL', 'Hull'], ['ship.fuel', 'H2', 'Hydrogen fuel'], ['ship.quantum', 'QT', 'Quantum fuel'], ['char.health', 'HP', 'Health'], ['char.oxygen', 'O2', 'Oxygen']];
+    const updatedAgo = (ms) => { const s = Math.floor(ms / 1000); return s < 60 ? `updated ${s} s ago` : `updated ${Math.floor(s / 60)} min ago`; };
+    const chip = (st) => `<span class="chip" data-st="${esc(st)}">${esc(STATUS_TEXT[st] || st)}</span>`;
+
+    function onFleet(m) {
+      const first = !fleet;
+      fleet = m;
+      if (first) { if (dash) live('bar', renderBar); layoutFleet(); }
+      live('fleet', renderFleet);
+      if (fleetDetail) live('fleet-detail', renderFleetDetail);
+    }
+
+    function layoutFleet() {
+      document.body.classList.toggle('fleet-on', fleetShown() && fleetOpen);
+      cancelAnimationFrame(fitFrame);
+      fitFrame = requestAnimationFrame(fit);
+    }
+
+    function fleetTools() {
+      if (!fleetShown()) return '';
+      return `${fleet.demo ? '<span class="demo-flag" title="Mock fleet peers replayed from telemetry recordings; nobody is connected">DEMO: mock peers from recordings</span>' : ''}` +
+        `<button class="btn ${fleetOpen ? 'on' : ''}" data-do="fleet" type="button" title="Show or hide the fleet panel">Fleet</button>`;
+    }
+
+    function fleetBar(f, label, title) {
+      if (!f) return '';
+      const w = typeof f.fraction === 'number' ? Math.max(0, Math.min(1, f.fraction)) * 100 : 0;
+      return `<span class="l" title="${esc(title || label)}">${esc(label)}</span><span class="fbar t-${esc(f.tone)}"><i style="width:${w}%"></i></span><span class="v t-${esc(f.tone)}">${esc(f.text)}</span>`;
+    }
+
+    function fleetCardInner(m) {
+      const f = m.fields;
+      const shown = (x) => x && x.text !== DASH;
+      const ship = m.sharing.ship ? [f['ship.name'], f['ship.mode']].filter(shown).map((x) => x.text).join(' · ') || 'Not in a ship' : 'No ship status shared';
+      const where = shown(f['char.activity']) ? f['char.activity'] : f['ship.aboard'];
+      // A dash bar says nothing on a small card (out of a ship, say); the detail view lists every field.
+      const bars = FLEET_BARS.filter(([id]) => shown(f[id])).map(([id, label, title]) => fleetBar(f[id], label, title)).join('');
+      const facts = [['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons']].filter(([id]) => shown(f[id]))
+        .map(([id, label]) => `<span><small>${esc(label)}</small><b class="t-${esc(f[id].tone)}">${esc(f[id].text)}</b></span>`).join('');
+      return `<div class="frow"><span class="who">${esc(m.handle)}</span>${chip(m.status)}</div>` +
+        `<div class="frow"><span class="sub">${esc(ship)}</span>${where ? `<span class="tag">${esc(where.text)}</span>` : ''}</div>` +
+        (bars ? `<div class="fbars">${bars}</div>` : '') +
+        (facts ? `<div class="ffacts">${facts}</div>` : '') +
+        `<div class="fage">${esc(updatedAgo(m.ageMs))}</div>`;
+    }
+
+    function admiralInner(m) {
+      const h = m.fields['char.health'];
+      const ship = m.fields['ship.name'];
+      return `${chip(m.status)}<span class="who"><b>${esc(m.handle)}</b><small>${esc(fleetGroupName(m.group))}${ship && ship.text !== DASH ? ` · ${esc(ship.text)}` : ''}</small></span>` +
+        `<span class="hp">${h ? `<span class="t-${esc(h.tone)}">${esc(h.text)}</span><span class="fbar t-${esc(h.tone)}"><i style="width:${(h.fraction || 0) * 100}%"></i></span>` : '<span class="t-unknown">HP ' + DASH + '</span>'}</span>` +
+        `<span class="age">${esc(`${Math.floor(m.ageMs / 1000)} s`)}</span>`;
+    }
+
+    /** The panel's shape: rebuilt only when groups, order or states change, so a flashing card keeps its beat. */
+    function renderFleet() {
+      const el = $('fleet');
+      if (!fleetShown()) { el.innerHTML = ''; fleetBuilt = ''; return; }
+      if (fleetDrag) return;
+      const v = fleet.view;
+      const key = JSON.stringify([v.admiral, fleet.groups.map((g) => [g.id, g.name, g.collapsed, g.members, g.rollup.text]), fleet.members.map((m) => [m.member, m.status]), fleet.view.groups.length]);
+      if (key === fleetBuilt) {
+        for (const c of el.querySelectorAll('[data-member]')) {
+          const m = fleetMember(c.dataset.member);
+          if (!m) continue;
+          const html = v.admiral ? admiralInner(m) : fleetCardInner(m);
+          if (c._html !== html) { c._html = html; c.innerHTML = html; }
+          markFleetSel(c);
+        }
+        return;
+      }
+      fleetBuilt = key;
+      const r = fleet.rollup;
+      const head = `<div class="fhead"><div class="ftitle"><h2>Fleet</h2><button class="btn x" data-f="hide" type="button" title="Hide the fleet panel">Hide</button></div>` +
+        `<div class="froll">${esc(`${r.total} ${r.total === 1 ? 'member' : 'members'}: ${r.text}`)}</div>` +
+        (fleet.demo ? '<span class="demo-flag">DEMO: mock peers from recordings</span>' : '') +
+        `<div class="ftools"><button class="btn" data-f="add" type="button" ${v.groups.length >= fleet.limits.groups ? 'disabled' : ''}>+ Group</button>` +
+        `<button class="btn ${v.admiral ? 'on' : ''}" data-f="admiral" type="button" title="Every member in one list, by state, across groups">Admiral view</button>` +
+        '<button class="btn" data-f="fields" type="button" title="Choose what the cards show">Card fields</button></div></div>';
+      let body;
+      if (!fleet.members.length) body = '<p class="fempty">No member cards yet.</p>';
+      else if (v.admiral) {
+        const n = (k) => fleet.members.filter((m) => m.status === k).length;
+        body = `<div class="ahead"><span><b>${n('DOWNED')}</b> downed</span><span><b>${n('DEAD')}</b> dead</span><span><b>${n('UP') + n('RESPAWNED')}</b> up</span><span><b>${n('OFFLINE')}</b> offline</span></div>` +
+          `<div class="alist">${fleet.admiral.map((id) => { const m = fleetMember(id); return m ? `<div class="arow" data-member="${esc(id)}" data-st="${esc(m.status)}">${admiralInner(m)}</div>` : ''; }).join('')}</div>`;
+      } else {
+        body = fleet.groups.map((g, i) => {
+          const named = g.id !== null;
+          const last = fleet.groups.length - 2;
+          const acts = named ? `<span class="acts"><button class="btn" data-f="up" data-g="${esc(g.id)}" type="button" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>` +
+            `<button class="btn" data-f="down" data-g="${esc(g.id)}" type="button" title="Move down" ${i >= last ? 'disabled' : ''}>↓</button>` +
+            `<button class="btn" data-f="rename" data-g="${esc(g.id)}" type="button" title="Rename">Rename</button>` +
+            `<button class="btn danger" data-f="remove" data-g="${esc(g.id)}" type="button" title="Remove the group; its members go to Ungrouped">×</button></span>` : '<span></span>';
+          const roll = g.rollup.downed ? esc(g.rollup.text).replace(/(\d+ downed)/, '<b>$1</b>') : esc(g.rollup.text);
+          const cards = g.collapsed ? '' : `<div class="fcards">${g.members.map((id) => { const m = fleetMember(id); return m ? `<div class="fcard" draggable="true" data-member="${esc(id)}" data-st="${esc(m.status)}">${fleetCardInner(m)}</div>` : ''; }).join('') || '<div class="hint">Drag cards here</div>'}</div>`;
+          return `<section class="fgroup" data-gid="${esc(g.id === null ? '' : g.id)}"><div class="fgroup-h">` +
+            `<button class="chev" data-f="collapse" data-g="${esc(g.id === null ? '' : g.id)}" type="button" title="${g.collapsed ? 'Expand' : 'Collapse'}" ${named ? '' : 'disabled'}>${g.collapsed ? '▸' : '▾'}</button>` +
+            `<span class="name">${esc(g.name)}</span>${acts}<span class="roll">${roll}</span></div>${cards}</section>`;
+        }).join('');
+      }
+      el.innerHTML = `${head}<div class="fbody">${body}</div>`;
+      for (const c of el.querySelectorAll('[data-member]')) { c._html = c.innerHTML; markFleetSel(c); }
+    }
+    function markFleetSel(c) {
+      const on = c.dataset.member === fleetDetail;
+      c.classList.toggle('sel', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      c.title = on ? 'Detail open: click again to close' : 'Click for the detail';
+    }
+
+    function fleetName(title, current) {
+      return ask(title, `<label class="check" style="display:grid;gap:6px">Name <input id="fleet-name" maxlength="${fleet.limits.name}" value="${esc(current || '')}" /></label>`,
+        [{ text: 'Cancel', value: null }, { text: 'Save', value: 'save', cls: 'primary' }]).then((c) => (c === 'save' ? $('fleet-name').value : null));
+    }
+
+    $('fleet').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-f]');
+      if (b) {
+        const act = b.dataset.f, gid = b.dataset.g;
+        const g = fleet.view.groups.find((x) => x.id === gid);
+        if (act === 'hide') { fleetOpen = false; try { localStorage.setItem(FLEET_OPEN_KEY, '0'); } catch { /* per-viewer only */ } layoutFleet(); renderBar(); }
+        else if (act === 'add') { const name = await fleetName('New group'); if (name !== null) send({ type: 'fleet.group.add', name }); }
+        else if (act === 'admiral') send({ type: 'fleet.admiral', on: !fleet.view.admiral });
+        else if (act === 'fields') openFleetFields();
+        else if (act === 'collapse' && g) send({ type: 'fleet.group.collapse', group: gid, collapsed: !g.collapsed });
+        else if (act === 'rename' && g) { const name = await fleetName('Rename group', g.name); if (name !== null) send({ type: 'fleet.group.rename', group: gid, name }); }
+        else if (act === 'remove' && g) {
+          const c = await ask('Remove group', `<p>Remove the group ${esc(g.name)}? Its members go back to Ungrouped.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
+          if (c === 'remove') send({ type: 'fleet.group.remove', group: gid });
+        } else if ((act === 'up' || act === 'down') && g) {
+          const i = fleet.view.groups.indexOf(g);
+          send({ type: 'fleet.group.move', group: gid, to: act === 'up' ? i - 1 : i + 1 });
+        }
+        return;
+      }
+      // A card or admiral row toggles its detail: the open one closes, another one switches to it.
+      const card = e.target.closest('[data-member]');
+      if (card) { if (card.dataset.member === fleetDetail) closeFleetDetail(); else openFleetDetail(card.dataset.member); }
+    });
+    // Drag a card onto a group (or onto a card, to go before it); Ungrouped takes it out of its group.
+    $('fleet').addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.fcard');
+      if (!card) return;
+      fleetDrag = card.dataset.member;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', fleetDrag);
+    });
+    $('fleet').addEventListener('dragover', (e) => {
+      const sec = fleetDrag && e.target.closest('.fgroup');
+      if (!sec) return;
+      e.preventDefault();
+      for (const s of $('fleet').querySelectorAll('.fgroup.drop')) if (s !== sec) s.classList.remove('drop');
+      sec.classList.add('drop');
+    });
+    $('fleet').addEventListener('drop', (e) => {
+      const sec = fleetDrag && e.target.closest('.fgroup');
+      if (!sec) return;
+      e.preventDefault();
+      const gid = sec.dataset.gid || null;
+      const before = e.target.closest('.fcard');
+      const g = gid && fleet.view.groups.find((x) => x.id === gid);
+      const msg = { type: 'fleet.assign', member: fleetDrag, group: gid };
+      if (g && before && before.dataset.member !== fleetDrag) {
+        const i = g.members.filter((x) => x !== fleetDrag).indexOf(before.dataset.member);
+        if (i >= 0) msg.index = i;
+      }
+      send(msg);
+    });
+    $('fleet').addEventListener('dragend', () => { fleetDrag = null; fleetBuilt = ''; renderFleet(); });
+
+    // ------------------------------------------------------------ fleet: detail view and card fields
+
+    function openFleetDetail(id) {
+      fleetDetail = id;
+      $('fleet-fields').hidden = true;
+      send({ type: 'fleet.detail', member: id });
+      renderFleetDetail();
+      $('fleet-detail').hidden = false;
+      renderFleet();
+    }
+    function closeFleetDetail() {
+      if (!fleetDetail) return;
+      fleetDetail = null;
+      send({ type: 'fleet.detail', member: null });
+      $('fleet-detail').hidden = true;
+      if (fleet) renderFleet();
+    }
+
+    function renderFleetDetail() {
+      const el = $('fleet-detail');
+      const m = fleetMember(fleetDetail);
+      if (!m || !fleetShown()) { closeFleetDetail(); return; }
+      const f = m.fields;
+      const kv = (pairs) => pairs.filter(([id]) => f[id]).map(([id, label]) => `<span>${esc(label)}</span><span class="t-${esc(f[id].tone)}">${esc(f[id].text)}</span>`).join('');
+      const bars = (pairs) => pairs.map(([id, label]) => fleetBar(f[id], label)).join('');
+      const shares = [m.sharing.ship && 'ship status', m.sharing.character && 'character status', m.sharing.detail && 'detail'].filter(Boolean).join(', ') || 'nothing';
+      const shipBars = bars([['ship.shields', 'Shields'], ['ship.hull', 'Hull'], ['ship.fuel', 'Hydrogen'], ['ship.quantum', 'Quantum']]);
+      const shipKv = kv([['ship.name', 'Ship'], ['ship.mode', 'Master mode'], ['ship.aboard', 'In a ship'], ['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons ready']]);
+      const charBars = bars([['char.health', 'Health'], ['char.oxygen', 'Oxygen']]);
+      const charKv = kv([['char.activity', 'Activity']]);
+      const faces = f['detail.shield_faces'] && f['detail.shield_faces'].items;
+      const power = f['detail.power'] && f['detail.power'].items;
+      const detailKv = kv([['detail.speed', 'Speed'], ['detail.altitude', 'Altitude']]);
+      const detail = !m.sharing.detail ? `<p class="note">${esc(m.handle)} does not share detail.</p>`
+        : `${faces ? `<div class="fbars">${faces.map((r) => fleetBar(r, r.label)).join('')}</div>` : ''}` +
+          `${power ? `<h4 style="margin-top:8px">Power</h4><div class="lamps">${power.map((r) => `<span class="t-${esc(r.tone)}" title="${esc(r.label)}: ${esc(r.text)}">${esc(r.label)}</span>`).join('')}</div>` : ''}` +
+          `${detailKv ? `<div class="kv" style="margin-top:8px">${detailKv}</div>` : ''}` +
+          (faces || power || detailKv ? '' : '<p class="note">Waiting for the detail fields.</p>');
+      const groups = [{ id: '', name: 'Ungrouped' }, ...fleet.view.groups];
+      el.innerHTML = `<div class="dhead"><h3>${esc(m.handle)}</h3>${chip(m.status)}<button class="btn" data-fd="close" type="button">Close</button></div>` +
+        `<p class="note">Shares ${esc(shares)} · ${esc(updatedAgo(m.ageMs))}${fleet.demo ? ' · DEMO: mock peer from a recording' : ''}</p>` +
+        `<label>Group <select id="fd-group">${groups.map((g) => opt(g.id, g.name, (m.group || '') === g.id)).join('')}</select></label>` +
+        `<section><h4>Ship</h4>${m.sharing.ship ? `<div class="fbars">${shipBars}</div><div class="kv" style="margin-top:6px">${shipKv}</div>` : `<p class="note">${esc(m.handle)} does not share ship status.</p>`}</section>` +
+        `<section><h4>Character</h4>${m.sharing.character ? `<div class="fbars">${charBars}</div><div class="kv" style="margin-top:6px">${charKv}</div>` : `<p class="note">${esc(m.handle)} does not share character status.</p>`}</section>` +
+        `<section><h4>Shield faces, power, flight</h4>${detail}</section>`;
+    }
+    $('fleet-detail').addEventListener('click', (e) => { if (e.target.closest('[data-fd="close"]')) closeFleetDetail(); });
+    $('fleet-detail').addEventListener('change', (e) => {
+      if (e.target.id === 'fd-group' && fleetDetail) send({ type: 'fleet.assign', member: fleetDetail, group: e.target.value || null });
+    });
+
+    function openFleetFields() {
+      closeFleetDetail();
+      const el = $('fleet-fields');
+      const on = new Set(fleet.view.fields);
+      const box = (consent) => fleet.fields.filter((f) => f.consent === consent)
+        .map((f) => `<label><input type="checkbox" data-ff="${esc(f.id)}" ${on.has(f.id) ? 'checked' : ''} /> ${esc(f.label)}</label>`).join('');
+      el.innerHTML = '<h3>Card fields</h3><p class="note">What the member cards you see show. Only these are asked of each member, and each member still decides what they share.</p>' +
+        `<div class="cols"><div><h4>Ship status</h4>${box('ship')}</div><div><h4>Character status</h4>${box('character')}</div></div>` +
+        '<p class="note">Shield faces, power, speed and altitude come with the detail view only, while it is open.</p>' +
+        '<div class="row"><button class="btn primary" data-ff-do="close" type="button">Done</button></div>';
+      el.hidden = false;
+    }
+    $('fleet-fields').addEventListener('change', () => {
+      const fields = [...$('fleet-fields').querySelectorAll('[data-ff]')].filter((x) => x.checked).map((x) => x.dataset.ff);
+      send({ type: 'fleet.fields', fields });
+    });
+    $('fleet-fields').addEventListener('click', (e) => { if (e.target.closest('[data-ff-do="close"]')) $('fleet-fields').hidden = true; });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeFleetDetail(); $('fleet-fields').hidden = true; if (dashPanel && !$('dlg').open) closeDashPanel(); } });
+
+    // ------------------------------------------------------------ kiosk
+
+    if (KIOSK) {
+      document.body.classList.add('kiosk');
+      let idle;
+      const wake = () => { document.body.classList.remove('idle'); clearTimeout(idle); idle = setTimeout(() => { if ($('kiosk-menu').hidden && $('bezel-panel').hidden) document.body.classList.add('idle'); }, 2000); };
+      for (const ev of ['pointermove', 'pointerdown', 'keydown']) window.addEventListener(ev, wake, true);
+      wake();
+
+      // The hidden way out: hold Escape, or the top left corner, for 2 s.
+      const EXIT_MS = 2000;
+      let exit = null, swallowClick = false;
+      const startExit = (via) => {
+        if (exit || !$('kiosk-menu').hidden) return;
+        const started = Date.now();
+        exit = { via, timer: setInterval(() => {
+          const f = (Date.now() - started) / EXIT_MS;
+          $('exit-hint').style.display = f > 0.25 ? 'block' : 'none';
+          $('exit-hint').firstElementChild.style.width = `${Math.min(1, f) * 100}%`;
+          if (f >= 1) { swallowClick = via === 'corner'; stopExit(); openKioskMenu(); }
+        }, 50) };
+      };
+      const stopExit = () => { if (!exit) return; clearInterval(exit.timer); exit = null; $('exit-hint').style.display = 'none'; };
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.repeat) startExit('key'); });
+      window.addEventListener('keyup', (e) => { if (e.key === 'Escape') stopExit(); });
+      window.addEventListener('pointerdown', (e) => { if (e.clientX < 48 && e.clientY < 48) startExit('corner'); }, true);
+      window.addEventListener('pointerup', stopExit, true);
+      window.addEventListener('pointercancel', stopExit, true);
+      window.addEventListener('click', (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+
+      if (WANT_FS) setTimeout(() => { if (!isFull()) $('fs-prompt').hidden = false; }, 600);
+      $('fs-prompt').addEventListener('click', () => { $('fs-prompt').hidden = true; goFull(); });
+    }
+
+    const isFull = () => Boolean(document.fullscreenElement) || (innerWidth === screen.width && innerHeight === screen.height);
+
+    /** Full screen on the display this window is on; needs a click or tap in this window. */
+    async function goFull() {
+      let opts = {};
+      try {
+        const granted = navigator.permissions && (await navigator.permissions.query({ name: 'window-management' })).state === 'granted';
+        if (granted && hasScreens()) opts = { screen: (await window.getScreenDetails()).currentScreen };
+      } catch { /* the permission name is not known everywhere */ }
+      try { await document.documentElement.requestFullscreen(opts); } catch { notice('Full screen was refused; press F11', 'bad'); }
+    }
+
+    function openKioskMenu() {
+      const m = $('kiosk-menu');
+      const t = serverTab(currentId);
+      m.innerHTML = `<h3>Kiosk menu</h3><p class="note">${esc(t ? t.name : ONLY)}. Hold Escape or the top left corner for 2 s to come back here.</p><div class="row">` +
+        '<button class="btn primary" data-k="back" type="button">Back to the tab</button>' +
+        `<button class="btn" data-k="map" type="button" ${t ? '' : 'disabled'}>Map bezel buttons</button>` +
+        `<button class="btn" data-k="full" type="button">${document.fullscreenElement ? 'Leave full screen' : 'Full screen'}</button>` +
+        '<button class="btn" data-k="dash" type="button">Open the full dashboard here</button>' +
+        '<button class="btn" data-k="close" type="button">Close this window</button></div>';
+      m.hidden = false;
+      document.body.classList.remove('idle');
+    }
+    $('kiosk-menu').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-k]');
+      if (!b) return;
+      const k = b.dataset.k;
+      $('kiosk-menu').hidden = true;
+      if (k === 'map') openBezelPanel(currentId);
+      else if (k === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else goFull(); }
+      else if (k === 'dash') { if (APP) APP.request('dashboard'); else location.href = '/dash'; }
+      else if (k === 'close') { if (APP) APP.request('close'); else window.close(); }
+    });
+
+    // ------------------------------------------------------------ bezel buttons
+
+    function bindText(b) {
+      if (b.kind === 'toggle') return `${toggleLabel(b.id)}: ${b.to ? b.to.toUpperCase() : 'toggle'}`;
+      if (b.kind === 'mode') return `Master mode ${b.to}`;
+      if (b.kind === 'sequence') return `Run ${(cat && (cat.sequences.find((s) => s.id === b.id) || {}).name) || b.id}`;
+      return `${b.id}${isConfirm(b.id) ? ' (hold 1.5 s)' : ''}`;
+    }
+    const bezelText = (m) => (m.label ? `${m.label} (${bindText(m.bind)})` : bindText(m.bind));
+
+    const bindKey = (b) => `${b.kind}|${b.id || ''}|${b.to || ''}`;
+    function keyBind(k) {
+      const [kind, id, to] = k.split('|');
+      if (kind === 'mode') return { kind, to };
+      if (kind === 'toggle') return to ? { kind, id, to } : { kind, id };
+      return { kind, id };
+    }
+    function bezelOptions(cur) {
+      const groups = [
+        ['Toggles', cat.toggles.flatMap((t) => [[`toggle|${t.id}|`, `${t.label}: toggle`], [`toggle|${t.id}|on`, `${t.label}: ON`], [`toggle|${t.id}|off`, `${t.label}: OFF`]])],
+        ['Master mode', [['mode||NAV', 'Master mode NAV'], ['mode||SCM', 'Master mode SCM']]],
+        ['Sequences', cat.sequences.map((s) => [`sequence|${s.id}|`, s.name])],
+        ['Game actions', cat.gameActions.map((a) => [`action|${a.name}|`, `${a.name}${a.confirm ? ' (hold 1.5 s)' : ''}`])],
+      ];
+      if (cur && !groups.some(([, l]) => l.some(([k]) => k === cur))) groups[3][1].unshift([cur, cur.split('|')[1]]);
+      return groups.map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(([k, t]) => opt(k, t, k === cur)).join('')}</optgroup>`).join('');
+    }
+
+    // The mapping being edited: the tab's id, the button just pressed, and the controller it came from.
+    let mapping = null;
+
+    function openBezelPanel(tabId) {
+      mapping = { tab: tabId, button: null, padId: null };
+      if (APP && KIOSK) APP.request('mapping', { active: true });
+      $('bezel-panel').hidden = false;
+      renderBezelPanel();
+      if (!polling) poll();
+    }
+    function closeBezelPanel() {
+      if (APP && KIOSK && mapping) APP.request('mapping', { active: false });
+      mapping = null; $('bezel-panel').hidden = true;
+    }
+
+    function renderBezelPanel() {
+      if (!mapping) return;
+      const t = serverTab(mapping.tab);
+      if (!t) { closeBezelPanel(); return; }
+      if (!cat) return;
+      const b = t.bezel || { gamepadId: '', buttons: [] };
+      const pad = b.gamepadId || mapping.padId;
+      const cur = mapping.button !== null ? b.buttons.find((m) => m.button === mapping.button) : null;
+      const full = !cur && b.buttons.length >= meta.limits.bezelButtons;
+      const learn = mapping.button === null
+        ? `<div class="learn wait">Press a bezel button to map it, or to change what it does.</div>`
+        : `<div class="learn"><div class="big">Button ${mapping.button}${cur ? ', mapped' : ', new'}</div>
+            ${full ? `<p class="note">All ${meta.limits.bezelButtons} buttons are mapped; clear one first.</p>` : `
+            <label>Does <select id="bz-bind">${bezelOptions(cur ? bindKey(cur.bind) : '')}</select></label>
+            <label>Label <input id="bz-label" maxlength="${meta.limits.label}" value="${esc((cur && cur.label) || '')}" placeholder="optional" /></label>
+            <p class="note">Game actions marked hold are sent after the button is held for 1.5 s.</p>
+            <div class="row"><button class="btn primary" data-b="save" type="button">${cur ? 'Save button' : 'Map button'}</button><button class="btn" data-b="cancel" type="button">Cancel</button></div>`}</div>`;
+      const rows = b.buttons.length
+        ? b.buttons.map((m) => `<div class="map ${m.button === mapping.button ? 'on' : ''}"><b>${m.button}</b><span class="what"><span>${esc(m.label || bindText(m.bind))}</span>${m.label ? `<small>${esc(bindText(m.bind))}</small>` : ''}</span>` +
+            `<span class="acts"><button class="btn" data-b="edit" data-n="${m.button}" type="button">Edit</button><button class="btn" data-b="clear" data-n="${m.button}" type="button">Clear</button></span></div>`).join('')
+        : '<div class="empty">No buttons mapped yet.</div>';
+      $('bezel-panel').innerHTML = `<h3>Bezel buttons: ${esc(t.name)}</h3>
+        <p class="pad">${pad ? `Controller <b>${esc(pad)}</b>` : 'No controller yet: the first button pressed picks it.'}</p>
+        ${learn}
+        <div class="maps">${rows}</div>
+        <p class="note">${b.buttons.length} of ${meta.limits.bezelButtons} mapped. Changes are saved at once.</p>
+        <div class="row"><button class="btn danger" data-b="clear-all" type="button" ${b.buttons.length ? '' : 'disabled'}>Clear all</button>
+          <button class="btn" data-b="relearn" type="button">Relearn on another controller</button>
+          <button class="btn primary" data-b="done" type="button">Done</button></div>`;
+    }
+
+    function saveBezel(t, buttons, padId) {
+      send({ type: 'dash.setBezel', tab: t.id, bezel: buttons.length || padId ? { gamepadId: padId, buttons } : null });
+    }
+
+    $('bezel-panel').addEventListener('click', async (e) => {
+      const el = e.target.closest('[data-b]');
+      if (!el || !mapping) return;
+      const t = serverTab(mapping.tab);
+      const b = (t && t.bezel) || { gamepadId: mapping.padId, buttons: [] };
+      const act = el.dataset.b;
+      if (act === 'done') return closeBezelPanel();
+      if (act === 'cancel') { mapping.button = null; return renderBezelPanel(); }
+      if (act === 'edit') { mapping.button = Number(el.dataset.n); return renderBezelPanel(); }
+      if (act === 'clear') {
+        const n = Number(el.dataset.n);
+        if (mapping.button === n) mapping.button = null;
+        return saveBezel(t, b.buttons.filter((m) => m.button !== n), b.gamepadId);
+      }
+      if (act === 'clear-all' || act === 'relearn') {
+        const relearn = act === 'relearn';
+        if (b.buttons.length) {
+          const c = await ask(relearn ? 'Relearn bezel buttons' : 'Clear bezel buttons', `<p>${relearn ? 'Clear every mapped button, then map them again on the next controller you press.' : `Clear all ${b.buttons.length} mapped buttons?`}</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Clear all', value: 'clear', cls: 'danger' }]);
+          if (c !== 'clear') return;
+        }
+        mapping.button = null;
+        mapping.padId = null;
+        send({ type: 'dash.setBezel', tab: t.id, bezel: null });
+        renderBezelPanel();
+        return;
+      }
+      if (act === 'save') {
+        const bind = keyBind($('bz-bind').value);
+        const label = $('bz-label').value.trim();
+        const entry = { button: mapping.button, bind, ...(label ? { label } : {}) };
+        const others = b.buttons.filter((m) => m.button !== mapping.button);
+        const buttons = [...others, entry].sort((x, y) => x.button - y.button);
+        mapping.button = null;
+        saveBezel(t, buttons, b.gamepadId || mapping.padId);
+      }
+    });
+
+    // Bezel buttons arrive as game-controller buttons, as on the MFD pages; only press and release edges count.
+    let polling = false;
+    const padPrev = new Map();
+    function poll() {
+      polling = true;
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const pad of pads) {
+        if (!pad) continue;
+        const before = padPrev.get(pad.index) || [];
+        pad.buttons.forEach((b, i) => {
+          if (b.pressed && !before[i]) onPadButton(pad, i);
+          if (!b.pressed && before[i]) onPadRelease(pad, i);
+        });
+        padPrev.set(pad.index, pad.buttons.map((b) => b.pressed));
+      }
+      if (KIOSK || mapping) requestAnimationFrame(poll);
+      else polling = false;
+    }
+
+    function onPadButton(pad, index) {
+      if (mapping) {
+        const t = serverTab(mapping.tab);
+        const known = (t && t.bezel && t.bezel.gamepadId) || mapping.padId;
+        if (known && pad.id !== known) { notice(`That button is on another controller (${pad.id}). Relearn to switch.`, 'bad'); return; }
+        if (index > meta.limits.buttonIndex) { notice(`Button ${index} is past the last index the dashboard keeps (${meta.limits.buttonIndex})`, 'bad'); return; }
+        mapping.padId = pad.id;
+        mapping.button = index;
+        renderBezelPanel();
+        return;
+      }
+      if (!KIOSK || !$('kiosk-menu').hidden) return;
+      if (APP && APP.nativeBezel) return;
+      const t = serverTab(currentId);
+      const m = t && t.bezel && t.bezel.gamepadId === pad.id && t.bezel.buttons.find((x) => x.button === index);
+      if (m) bezelPress(m);
+    }
+    function onPadRelease(pad, index) {
+      if (bezelHold && bezelHold.button === index) endBezelHold();
+    }
+
+    /** The same message a widget click sends; a confirm-group action is held 1.5 s like the widget. */
+    function bezelPress(m) {
+      const b = m.bind;
+      if (b.kind === 'toggle') {
+        if (b.to) send({ type: 'set', toggle: b.id, to: b.to });
+        else { const t = vals && vals.toggles[b.id]; if (t) send(t.click); else notice(`${toggleLabel(b.id)}: no data from the game`, 'bad'); }
+      } else if (b.kind === 'mode') send({ type: 'mode', to: b.to });
+      else if (b.kind === 'sequence') runSequence(b.id);
+      else if (!isConfirm(b.id)) send({ type: 'press', action: b.id });
+      else startBezelHold(m);
+    }
+
+    let bezelHold = null;
+    function startBezelHold(m) {
+      if (bezelHold) endBezelHold();
+      const action = m.bind.id;
+      const started = Date.now();
+      send({ type: 'hold.start', action });
+      $('hold-text').textContent = `Hold: ${m.label || action}`;
+      $('hold-bar').hidden = false;
+      bezelHold = { button: m.button, action, timer: setInterval(() => {
+        const f = (Date.now() - started) / HOLD_MS;
+        $('hold-bar').querySelector('i').style.width = `${Math.min(1, f) * 100}%`;
+        if (f >= 1) { bezelHold.sent = true; endBezelHold(); send({ type: 'press', action, confirmed: true }); }
+      }, 50) };
+    }
+    function endBezelHold() {
+      if (!bezelHold) return;
+      clearInterval(bezelHold.timer);
+      if (!bezelHold.sent) send({ type: 'hold.end', action: bezelHold.action });
+      bezelHold = null;
+      $('hold-bar').hidden = true;
+      $('hold-bar').querySelector('i').style.width = '0';
+    }
+
+    if (APP) {
+      let appHold = null;
+      APP.on((e) => {
+        if (e.type === 'notice') notice(e.text, e.tone);
+        else if (e.type === 'hold') {
+          const started = Date.now();
+          clearInterval(appHold);
+          $('hold-text').textContent = `Hold: ${e.label}`;
+          $('hold-bar').hidden = false;
+          appHold = setInterval(() => { $('hold-bar').querySelector('i').style.width = `${Math.min(1, (Date.now() - started) / HOLD_MS) * 100}%`; }, 50);
+        } else if (e.type === 'holdEnd') {
+          clearInterval(appHold);
+          appHold = null;
+          $('hold-bar').hidden = true;
+          $('hold-bar').querySelector('i').style.width = '0';
+        }
+      });
+    }
+
+    if (KIOSK) poll();
+
+    document.body.classList.toggle('editing', editing);
+    connect();
+  </script>
+</body>
+</html>

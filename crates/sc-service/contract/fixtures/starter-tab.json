@@ -1,0 +1,290 @@
+{
+  "id": "main",
+  "name": "Main",
+  "rows": 14,
+  "widgets": [
+    {
+      "id": "status",
+      "kind": "status",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 1,
+      "bind": {
+        "kind": "status"
+      },
+      "look": "strip"
+    },
+    {
+      "id": "rail-pwr",
+      "kind": "lamp",
+      "x": 0,
+      "y": 1,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "value",
+        "id": "caution.pwr"
+      },
+      "look": "square",
+      "label": "PWR"
+    },
+    {
+      "id": "rail-wpn",
+      "kind": "lamp",
+      "x": 0,
+      "y": 2,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "value",
+        "id": "caution.wpn"
+      },
+      "look": "square",
+      "label": "WPN"
+    },
+    {
+      "id": "rail-thr",
+      "kind": "lamp",
+      "x": 0,
+      "y": 3,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "value",
+        "id": "caution.thr"
+      },
+      "look": "square",
+      "label": "THR"
+    },
+    {
+      "id": "rail-shld",
+      "kind": "lamp",
+      "x": 0,
+      "y": 4,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "value",
+        "id": "caution.shld"
+      },
+      "look": "square",
+      "label": "SHLD"
+    },
+    {
+      "id": "rail-cool",
+      "kind": "lamp",
+      "x": 0,
+      "y": 5,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "value",
+        "id": "caution.cool"
+      },
+      "look": "square",
+      "label": "COOL"
+    },
+    {
+      "id": "rail-cpld",
+      "kind": "lamp",
+      "x": 0,
+      "y": 6,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "toggle",
+        "id": "decoupled",
+        "invert": true
+      },
+      "look": "square",
+      "label": "CPLD"
+    },
+    {
+      "id": "rail-esp",
+      "kind": "lamp",
+      "x": 0,
+      "y": 7,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "toggle",
+        "id": "esp"
+      },
+      "look": "square",
+      "label": "ESP"
+    },
+    {
+      "id": "rail-lock",
+      "kind": "lamp",
+      "x": 0,
+      "y": 8,
+      "w": 2,
+      "h": 1,
+      "bind": {
+        "kind": "toggle",
+        "id": "door_locks"
+      },
+      "look": "square",
+      "label": "LOCK"
+    },
+    {
+      "id": "speed",
+      "kind": "readout",
+      "x": 2,
+      "y": 1,
+      "w": 6,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.speed"
+      },
+      "look": "number"
+    },
+    {
+      "id": "altitude",
+      "kind": "readout",
+      "x": 8,
+      "y": 1,
+      "w": 6,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.altitude"
+      },
+      "look": "number"
+    },
+    {
+      "id": "radar-altitude",
+      "kind": "readout",
+      "x": 14,
+      "y": 1,
+      "w": 6,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.radar_altitude"
+      },
+      "look": "number"
+    },
+    {
+      "id": "mode",
+      "kind": "mode",
+      "x": 20,
+      "y": 1,
+      "w": 4,
+      "h": 4,
+      "bind": {
+        "kind": "mode"
+      },
+      "look": "selector"
+    },
+    {
+      "id": "shields",
+      "kind": "readout",
+      "x": 2,
+      "y": 5,
+      "w": 6,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.shields"
+      },
+      "look": "bar"
+    },
+    {
+      "id": "hull",
+      "kind": "readout",
+      "x": 8,
+      "y": 5,
+      "w": 6,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.hull"
+      },
+      "look": "bar"
+    },
+    {
+      "id": "h2",
+      "kind": "readout",
+      "x": 14,
+      "y": 5,
+      "w": 5,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.hydrogen_fuel"
+      },
+      "look": "bar"
+    },
+    {
+      "id": "qt",
+      "kind": "readout",
+      "x": 19,
+      "y": 5,
+      "w": 5,
+      "h": 4,
+      "bind": {
+        "kind": "value",
+        "id": "ship.quantum_fuel"
+      },
+      "look": "bar"
+    },
+    {
+      "id": "vtol",
+      "kind": "toggle",
+      "x": 0,
+      "y": 9,
+      "w": 6,
+      "h": 5,
+      "bind": {
+        "kind": "toggle",
+        "id": "vtol"
+      },
+      "look": "button"
+    },
+    {
+      "id": "gear",
+      "kind": "toggle",
+      "x": 6,
+      "y": 9,
+      "w": 6,
+      "h": 5,
+      "bind": {
+        "kind": "toggle",
+        "id": "gear"
+      },
+      "look": "button"
+    },
+    {
+      "id": "coupled",
+      "kind": "toggle",
+      "x": 12,
+      "y": 9,
+      "w": 6,
+      "h": 5,
+      "bind": {
+        "kind": "toggle",
+        "id": "decoupled",
+        "invert": true
+      },
+      "look": "button",
+      "label": "Coupled"
+    },
+    {
+      "id": "lights",
+      "kind": "toggle",
+      "x": 18,
+      "y": 9,
+      "w": 6,
+      "h": 5,
+      "bind": {
+        "kind": "toggle",
+        "id": "lights"
+      },
+      "look": "button",
+      "label": "Lights"
+    }
+  ]
+}

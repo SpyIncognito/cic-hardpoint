@@ -1,0 +1,111 @@
+# Builds hardpoint.exe on a GitHub-hosted Windows runner and publishes it as a release.
+# A pushed version tag (v*) makes a release; a manual run is a dry run that only uploads the
+# build as a workflow artifact. No secrets and no code signing.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      sha256: ${{ steps.sums.outputs.sha256 }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Identity check (public patterns only)
+        run: bash tools/check-identity.sh
+
+      - name: Format, lint and test
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+      - name: Dependency policy
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny check
+
+      - name: Build hardpoint.exe
+        run: |
+          # The build machine's paths are remapped so none of them end up in the exe.
+          root="$(cygpath -w "$GITHUB_WORKSPACE")"
+          cargo_home="$(cygpath -w "${CARGO_HOME:-$USERPROFILE/.cargo}")"
+          export RUSTFLAGS="-C target-feature=+crt-static --remap-path-prefix=$root=/hardpoint --remap-path-prefix=$cargo_home\\registry\\src=/cargo/registry --remap-path-prefix=$cargo_home\\git\\checkouts=/cargo/git --remap-path-prefix=$(cygpath -w "$USERPROFILE")=/build"
+          cargo build --release --locked --target x86_64-pc-windows-msvc -p sc-app
+          mkdir -p dist
+          cp target/x86_64-pc-windows-msvc/release/hardpoint.exe dist/
+
+      - name: Checksums
+        id: sums
+        working-directory: dist
+        run: |
+          sha256sum hardpoint.exe > SHA256SUMS
+          cat SHA256SUMS
+          echo "sha256=$(cut -d' ' -f1 SHA256SUMS)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hardpoint-windows
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: hardpoint-windows
+          path: dist
+
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/hardpoint.exe
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          cat > notes.md <<NOTES
+          Hardpoint ${TAG}, a Star Citizen ship dashboard for Windows.
+
+          Download hardpoint.exe and check it against SHA256SUMS:
+
+              ${SHA256}  hardpoint.exe
+
+          Build provenance is attested for this file (gh attestation verify hardpoint.exe --repo ${GITHUB_REPOSITORY}).
+          The exe is not code-signed yet, so Windows SmartScreen may warn on first run.
+
+          Spy Incognito Games. Licensed under the Apache License, Version 2.0.
+          NOTES
+          gh release create "$TAG" dist/hardpoint.exe dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "Hardpoint $TAG" --notes-file notes.md --verify-tag

@@ -1,0 +1,6 @@
+@fontsource/barlow-semi-condensed 5.3.0 (npm registry, barlow-semi-condensed-5.3.0.tgz, sha256 94991ed2fc3fe0e11d8af5129932bdd94d29b6a7355859ebfba9a19d6610cc77; files copied unchanged from package/files and package/LICENSE). Font licence: SIL Open Font License 1.1.
+sha256:
+0d7513795eaf8fdab7f340144841bd2d9fac7d9303c03aa6b525a2c908e9b371  barlow-semi-condensed-latin-500-normal.woff2
+f158417e9207b5362f9b71a2fe779ce5bb836ad972f38445c3163af39d2c998d  barlow-semi-condensed-latin-600-normal.woff2
+fb958c8c20a05552ac8a85d925d96028d52565792650e941a5fe96b6997aa5cb  barlow-semi-condensed-latin-700-normal.woff2
+56027070a748db90a33c074bf7b9b7f0df66dd38a8a0d3e3a951f79035f9c4a0  LICENSE

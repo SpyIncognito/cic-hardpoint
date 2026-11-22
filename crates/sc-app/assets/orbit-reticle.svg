@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs><mask id="behind" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+  <rect width="512" height="512" fill="#fff"/>
+  <circle cx="256" cy="256" r="153" fill="#000"/>
+</mask>
+<mask id="infront" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+  <rect width="512" height="512" fill="#fff"/>
+  <path d="M 50 256 A 206 66 0 0 0 462 256" transform="rotate(-22 256 256)" fill="none" stroke="#000" stroke-width="56"/>
+</mask></defs>
+<rect width="512" height="512" rx="112" fill="#0B1426"/>
+<polygon points="104.0,82.0 108.2,103.8 130.0,108.0 108.2,112.2 104.0,134.0 99.8,112.2 78.0,108.0 99.8,103.8" fill="#E8F1FF"/>
+<circle cx="420" cy="408" r="9" fill="#E8F1FF"/>
+<circle cx="404" cy="100" r="7" fill="#E8F1FF" opacity="0.7"/>
+<ellipse cx="256" cy="256" rx="206" ry="66" transform="rotate(-22 256 256)" fill="none" stroke="#FFB020" stroke-width="26" mask="url(#behind)"/>
+<g mask="url(#infront)">
+  <circle cx="256" cy="256" r="122" fill="none" stroke="#3FD0FF" stroke-width="34"/>
+  <rect x="244" y="150" width="24" height="44" rx="5" fill="#3FD0FF" transform="rotate(0 256 256)"/><rect x="244" y="150" width="24" height="44" rx="5" fill="#3FD0FF" transform="rotate(90 256 256)"/><rect x="244" y="150" width="24" height="44" rx="5" fill="#3FD0FF" transform="rotate(270 256 256)"/>
+</g>
+<path d="M 50 256 A 206 66 0 0 0 462 256" transform="rotate(-22 256 256)" fill="none" stroke="#FFB020" stroke-width="26"/>
+<circle cx="256" cy="256" r="16" fill="#3FD0FF"/>
+</svg>

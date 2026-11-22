@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/fleet-proto", "crates/sc-game", "crates/sc-core", "crates/sc-service", "crates/sc-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Spy Incognito <spy.incognito.games@gmail.com>"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: objects keep their order (schema field order for frames, written order for
+# files and messages), as JavaScript objects do, so JSON output matches the TypeScript.
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tracing = "0.1"
+thiserror = "2"
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true

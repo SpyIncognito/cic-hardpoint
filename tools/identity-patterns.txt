@@ -1,0 +1,13 @@
+# Generic deny patterns for tools/check-identity.sh: extended regex, matched case-insensitively.
+# Private names are not listed here; they come from the private list (see the script).
+Co-Authored-By
+https?://(www\.)?claude\.ai/
+\b10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\b
+\b192\.168\.[0-9]{1,3}\.[0-9]{1,3}\b
+\b[a-z0-9-]+\.lab\.[a-z0-9.-]+
+/srv/
+/mnt/[a-z]/
+/home/[a-z0-9_-]{2,}
+/tmp/claude
+\bPM \.?[0-9]{3,6}\b
+\b[a-z]+-[0-9a-f]{6}\.[0-9]{3,6}\b
