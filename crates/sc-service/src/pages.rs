@@ -22,6 +22,7 @@ use percent_encoding::percent_decode_str;
 
 use crate::dashboard::built_in_css;
 use crate::portal;
+use crate::relay::{Mode, companion};
 use crate::service::App;
 
 static PUBLIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../pages");
@@ -50,6 +51,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/portal", get(portal_route))
         .route("/dash", get(dash_page))
         .route("/vendor/{*path}", get(vendor))
+        .route("/unit-grid.js", get(unit_grid))
         .fallback(not_found)
         .with_state(app)
 }
@@ -106,9 +108,29 @@ async fn portal_route(
         Ok(ws) if origin_ok && uri.query().is_none() => ws
             .max_message_size(MAX_PAGE_MESSAGE_BYTES)
             .max_frame_size(MAX_PAGE_MESSAGE_BYTES)
-            .on_upgrade(move |socket: WebSocket| portal::session::serve(socket, app)),
+            .on_upgrade(move |socket: WebSocket| async move {
+                // On a companion every page is the game PC's, over the relay link.
+                if app.relay.mode() == Mode::Companion {
+                    companion::bridge(Arc::clone(&app.relay), socket, app.token.clone()).await;
+                } else {
+                    portal::session::serve(socket, app).await;
+                }
+            }),
         _ => StatusCode::FORBIDDEN.into_response(),
     }
+}
+
+/// The Fleet tab's layout rules, shared with the CIC Live board (copied from cic-panel).
+async fn unit_grid() -> Response {
+    let Some(file) = PUBLIC.get_file("unit-grid.js") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let headers = [
+        (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "no-cache"),
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+    ];
+    (headers, file.contents()).into_response()
 }
 
 /// A file under public/vendor, or 404 for anything else (including `..` and encoded escapes).

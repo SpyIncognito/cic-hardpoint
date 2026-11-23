@@ -6,15 +6,12 @@
 #[cfg(windows)]
 mod gui;
 
-use std::path::PathBuf;
 use std::process::ExitCode;
 
-use sc_service::fleet::demo::{self, DEFAULT_PEERS, MAX_PEERS};
 use sc_service::{DEFAULT_PORT, ServiceOptions};
 
 const USAGE: &str = "\
 usage: hardpoint [--port N] [--page-bezel] [--record] [--no-splash]
-                 [--fleet-demo DIR|FILE.jsonl ... [--fleet-peers N]]
 
   --port N        pages on 127.0.0.1:N (default 47520, or SC_MIP_PORT; 0 picks a free port)
   --page-bezel    leave bezel buttons to the kiosk pages (the browser Gamepad API) instead of
@@ -22,10 +19,7 @@ usage: hardpoint [--port N] [--page-bezel] [--record] [--no-splash]
   --record        record the game's telemetry (scrubbed) from launch, into the recordings
                   folder in the settings folder, until stopped from the tray or the app quits
   --no-splash     no splash at launch (also \"splash\": false in app-settings.json in the
-                  settings folder)
-  --fleet-demo P  DEMO: show the fleet panel with mock peers replayed from recordings (a
-                  folder of .jsonl files, or a file; repeat for more)
-  --fleet-peers N how many mock peers (default 5, at most 12)";
+                  settings folder)";
 
 #[derive(Debug)]
 pub struct Args {
@@ -34,8 +28,6 @@ pub struct Args {
     pub record: bool,
     /// Show the splash at launch (Windows only; the settings file can also turn it off).
     pub splash: bool,
-    pub fleet_demo: Vec<PathBuf>,
-    pub fleet_peers: usize,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -43,8 +35,6 @@ fn parse_args() -> Result<Args, String> {
     let mut native_bezel = true;
     let mut record = false;
     let mut splash = true;
-    let mut fleet_demo = vec![];
-    let mut fleet_peers = None;
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -55,18 +45,6 @@ fn parse_args() -> Result<Args, String> {
             "--page-bezel" => native_bezel = false,
             "--record" => record = true,
             "--no-splash" => splash = false,
-            "--fleet-demo" => {
-                fleet_demo.push(it.next().ok_or("--fleet-demo needs a value")?.into())
-            }
-            "--fleet-peers" => {
-                let v = it.next().ok_or("--fleet-peers needs a value")?;
-                fleet_peers = Some(
-                    v.parse()
-                        .ok()
-                        .filter(|n| (1..=MAX_PEERS).contains(n))
-                        .ok_or_else(|| format!("--fleet-peers must be 1 to {MAX_PEERS}"))?,
-                );
-            }
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown argument {other}")),
         }
@@ -78,29 +56,18 @@ fn parse_args() -> Result<Args, String> {
             .filter(|&p| p != 0)
             .unwrap_or(DEFAULT_PORT)
     });
-    if fleet_peers.is_some() && fleet_demo.is_empty() {
-        return Err("--fleet-peers needs --fleet-demo".to_owned());
-    }
     Ok(Args {
         port,
         native_bezel,
         record,
         splash,
-        fleet_demo,
-        fleet_peers: fleet_peers.unwrap_or(DEFAULT_PEERS),
     })
 }
 
-/// The service's options; with `--fleet-demo`, the recordings are read here.
+/// The service's options.
 pub fn service_options(args: &Args) -> Result<ServiceOptions, String> {
-    let fleet_demo = if args.fleet_demo.is_empty() {
-        None
-    } else {
-        Some(demo::open(&args.fleet_demo, args.fleet_peers)?)
-    };
     Ok(ServiceOptions {
         port: args.port,
-        fleet_demo,
         ..ServiceOptions::standard()
     })
 }

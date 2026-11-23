@@ -14,7 +14,6 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use sc_core::engine::EngineOptions;
 use sc_game::{GameAction, GameApi, RecordedFrame, ReplayGame, ReplayOptions};
-use sc_service::fleet::demo::{Demo, read_recording};
 use sc_service::{Service, ServiceOptions, busfile};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -27,15 +26,11 @@ struct Rig {
 
 impl Rig {
     async fn start() -> Self {
-        Self::start_with(None).await
-    }
-
-    async fn start_with(fleet_demo: Option<Demo>) -> Self {
-        Self::start_full(fleet_demo, None).await
+        Self::start_full(None).await
     }
 
     /// `frames`: what the replayed game sends, one every 20 ms, in a loop.
-    async fn start_full(fleet_demo: Option<Demo>, frames: Option<Vec<Value>>) -> Self {
+    async fn start_full(frames: Option<Vec<Value>>) -> Self {
         let frame = json!({ "vehicle": { "state": {
             "name": "Test ship",
             "lights_enabled": true,
@@ -78,7 +73,8 @@ impl Rig {
             bus_file: dir.path().join("bus.json"),
             game: Some(Arc::clone(&game) as Arc<dyn GameApi>),
             engine: EngineOptions::default(),
-            fleet_demo,
+            fleet_connector: None,
+            relay: sc_service::relay::RelayOptions::default(),
         })
         .await
         .unwrap();
@@ -523,6 +519,51 @@ async fn a_dashboard_page_edits_imports_and_exports() {
         .await;
 }
 
+#[tokio::test]
+async fn a_dashboard_page_sets_how_times_are_shown_and_every_page_hears() {
+    let rig = Rig::start().await;
+    let file = rig.dir.path().join("app-settings.json");
+    std::fs::write(&file, r#"{ "splash": false }"#).unwrap();
+    let mut p = rig.portal("dash").await;
+    let mut other = rig.portal("dash").await;
+    other.call(1, json!({ "type": "dash.get" })).await;
+    p.call(1, json!({ "type": "dash.get" })).await;
+    let first = p.until(|m| m["type"] == "time").await;
+    assert_eq!(first["time"], json!({ "zone": "auto", "clock": "24h" }));
+    assert!(
+        first["zones"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("America/Denver"))
+    );
+
+    let bad = p
+        .call(
+            2,
+            json!({ "type": "time.set", "time": { "zone": "America/Nowhere", "clock": "24h" } }),
+        )
+        .await;
+    assert_eq!(
+        bad["problems"],
+        json!(["Unknown time zone \"America/Nowhere\": pick one from the list"])
+    );
+    assert_eq!(bad["time"]["zone"], "auto");
+    p.until(|m| m["type"] == "notice" && m["text"].as_str().unwrap().contains("Unknown time zone"))
+        .await;
+
+    let good = json!({ "zone": "America/Denver", "clock": "12h" });
+    let set = p.call(3, json!({ "type": "time.set", "time": good })).await;
+    assert_eq!(
+        (set["problems"].clone(), set["time"].clone()),
+        (json!([]), good.clone())
+    );
+    other
+        .until(|m| m["type"] == "time" && m["time"] == good)
+        .await;
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved, json!({ "splash": false, "time": good }));
+}
+
 /// A bus client after its welcome; `capabilities` goes in its hello.
 async fn bus_client(rig: &Rig, capabilities: Value) -> Socket {
     let mut ws = rig.bus().await;
@@ -605,116 +646,95 @@ async fn the_values_carry_recording_only_while_the_app_records() {
     assert!(after.get("keys").is_none());
 }
 
-/// A short made-up recording: 10 s in a ship, at 10 frames a second.
-fn short_recording() -> String {
-    let frame = json!({
-        "vehicle": { "state": {
-            "name": "Ship",
-            "health": 1,
-            "master_mode": { "mode": "VEHICLE_MASTER_MODE_SCM" },
-            "shields": { "level": 0.75, "faces": [1, 0.5] },
-        } },
-        "actor": {
-            "vitals": { "health": { "current": 100, "max": 100 }, "oxygen": { "current": 1, "max": 1 } },
-            "state": { "locomotion": "ACTOR_LOCOMOTION_STATE_SEATED", "uec_balance": "987654" },
-        },
-    });
-    (0..100)
-        .map(|i| json!({ "t": i * 100, "frame": frame }).to_string())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 #[tokio::test]
-async fn the_fleet_demo_pushes_mock_peers_and_keeps_the_viewers_groups() {
-    let rec = read_recording("short", std::io::Cursor::new(short_recording())).unwrap();
-    let rig = Rig::start_with(Some(Demo::new(vec![rec], 3))).await;
+async fn the_fleet_panel_offers_joining_the_consent_and_the_viewers_groups() {
+    let rig = Rig::start().await;
     let mut page = rig.portal("dash").await;
     page.call(1, json!({ "type": "dash.get" })).await;
-    let fleet = page
-        .until(|m| m["type"] == "fleet" && m["members"].as_array().is_some_and(|a| a.len() == 3))
-        .await;
-    assert_eq!(fleet["demo"], true);
-    assert_eq!(fleet["schema"], 1);
-    assert_eq!(fleet["staleMs"], 10000);
-    let vega = &fleet["members"][0];
-    assert_eq!(vega["handle"], "Demo Vega");
-    assert_eq!(vega["member"], "demo-vega");
-    assert_eq!(vega["schema"], 1);
-    assert_eq!(vega["status"], "UP");
-    assert_eq!(vega["group"], Value::Null);
-    assert_eq!(vega["fields"]["ship.shields"]["text"], "75%");
-    assert_eq!(vega["fields"]["ship.name"]["text"], "Demo Lancer");
-    assert!(vega["fields"].get("detail.shield_faces").is_none());
-    assert!(!fleet.to_string().contains("987654"), "never the balance");
+    let fleet = page.until(|m| m["type"] == "fleet").await;
+    let me = rig.service.fleet_client().public_key();
+    assert_eq!(fleet["me"]["member"], me.to_string());
+    assert_eq!(fleet["me"]["fingerprint"], me.fingerprint());
+    assert_eq!(fleet["link"]["state"], "none");
+    assert_eq!(fleet["link"]["consent"], json!([]));
+    assert_eq!(fleet["sharing"], false);
+    assert_eq!(fleet["layout"], "personal");
     assert_eq!(fleet["groups"][0]["name"], "Ungrouped");
-    assert_eq!(fleet["groups"][0]["rollup"]["text"], "3/3 up");
+    assert_eq!(fleet["wings"][0]["groups"][0]["name"], "Ungrouped");
+    assert!(fleet.get("demo").is_none());
 
-    // Groups, card fields and the detail view.
-    let added = page
-        .call(2, json!({ "type": "fleet.group.add", "name": "Wing 1" }))
-        .await;
-    assert_eq!(added["problems"], json!([]));
-    let group = added["group"]["id"].as_str().unwrap().to_owned();
+    // The send consent, field by field, and its preview.
     let r = page
         .call(
-            3,
-            json!({ "type": "fleet.assign", "member": "demo-rook", "group": group }),
+            2,
+            json!({ "type": "fleet.consent", "fields": ["ship.shields", "char.health"] }),
         )
         .await;
     assert_eq!(r["problems"], json!([]));
+    page.until(|m| {
+        m["type"] == "fleet" && m["link"]["consent"] == json!(["ship.shields", "char.health"])
+    })
+    .await;
+    let r = page.call(3, json!({ "type": "fleet.preview" })).await;
+    assert_eq!(r["card"]["member"], me.to_string());
+    let fields: Vec<&str> = r["card"]["fields"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(fields, ["ship.shields", "char.health"]);
+    let saved = std::fs::read_to_string(rig.dir.path().join("fleet-consent.json")).unwrap();
+    assert!(saved.contains("ship.shields"), "{saved}");
     let r = page
         .call(
             4,
-            json!({ "type": "fleet.fields", "fields": ["ship.hull", "char.health"] }),
+            json!({ "type": "fleet.consent", "fields": ["ship.secret"] }),
         )
         .await;
-    assert_eq!(r["problems"], json!([]));
+    assert_eq!(r["problems"].as_array().unwrap().len(), 1);
+
+    // A bad invite is answered at once.
     let r = page
-        .call(5, json!({ "type": "fleet.group.add", "name": "<b>" }))
+        .call(
+            5,
+            json!({ "type": "fleet.join", "invite": "https://x", "handle": "Vega" }),
+        )
+        .await;
+    assert_eq!(r["problems"], json!(["an invite starts with cic://"]));
+
+    // The viewer's own groups.
+    let added = page
+        .call(6, json!({ "type": "fleet.group.add", "name": "Wing 1" }))
+        .await;
+    assert_eq!(added["problems"], json!([]));
+    let r = page
+        .call(7, json!({ "type": "fleet.group.add", "name": "<b>" }))
         .await;
     assert_eq!(r["problems"].as_array().unwrap().len(), 1);
-    page.until(|m| m["type"] == "notice").await;
-    page.call(6, json!({ "type": "fleet.detail", "member": "demo-vega" }))
+    page.until(|m| m["type"] == "fleet" && m["groups"][0]["name"] == "Wing 1")
         .await;
-    let fleet = page
-        .until(|m| {
-            m["type"] == "fleet"
-                && m["groups"][0]["members"] == json!(["demo-rook"])
-                && m["members"][0]["fields"]
-                    .get("detail.shield_faces")
-                    .is_some()
-                && m["members"][0]["fields"].get("ship.shields").is_none()
-        })
-        .await;
-    assert_eq!(fleet["groups"][0]["name"], "Wing 1");
-    assert_eq!(fleet["groups"][0]["rollup"]["text"], "1/1 up");
-    assert_eq!(
-        fleet["groups"][1]["members"],
-        json!(["demo-vega", "demo-kestrel"])
-    );
-    assert!(
-        fleet["members"][1]["fields"]
-            .get("detail.shield_faces")
-            .is_none()
-    );
     let saved = std::fs::read_to_string(rig.dir.path().join("fleet-view.json")).unwrap();
-    assert!(saved.contains("\"Wing 1\"") && saved.contains("demo-rook"));
-    rig.service.close().await;
-}
+    assert!(saved.contains("\"Wing 1\""));
+    assert!(rig.dir.path().join("fleet-identity.key").exists());
 
-#[tokio::test]
-async fn without_a_fleet_there_is_no_fleet_push() {
-    let rig = Rig::start().await;
-    assert!(rig.service.fleet().is_none());
-    let mut page = rig.portal("dash").await;
-    page.call(1, json!({ "type": "dash.get" })).await;
-    let r = page
-        .call(2, json!({ "type": "fleet.group.add", "name": "Wing" }))
-        .await;
-    assert_eq!(r["problems"], json!(["There is no fleet"]));
-    page.drain(600).await;
-    assert!(page.seen.iter().all(|m| m["type"] != "fleet"));
+    // Structure changes are made in the CIC portal: a page that still asks gets the
+    // unknown-message error, and no change is made.
+    for (id, msg) in [
+        (
+            8,
+            json!({ "type": "fleet.change", "change": { "op": "place", "member": "m", "unit": null, "role": null } }),
+        ),
+        (9, json!({ "type": "fleet.moves", "member": "m" })),
+    ] {
+        let kind = msg["type"].as_str().unwrap().to_owned();
+        let mut msg = msg;
+        msg["id"] = json!(id);
+        send(&mut page.ws, &msg).await;
+        let answer = page.until(|m| m["type"] == "result" && m["id"] == id).await;
+        assert_eq!(answer["error"], format!("unknown fleet message {kind}"));
+        assert!(answer.get("result").is_none_or(Value::is_null), "{answer}");
+    }
     rig.service.close().await;
 }
 
@@ -735,7 +755,7 @@ fn corsair_frame() -> Value {
 
 #[tokio::test]
 async fn values_carry_the_ship_and_its_greyed_functions_and_a_ship_change_switches_the_dashboard() {
-    let rig = Rig::start_full(None, Some(vec![corsair_frame(); 50])).await;
+    let rig = Rig::start_full(Some(vec![corsair_frame(); 50])).await;
     let mut p = rig.portal("dash").await;
     let got = p.call(1, json!({ "type": "dash.get" })).await;
     assert_eq!(got["schemaVersion"], 1, "the page still gets one dashboard");
@@ -806,10 +826,94 @@ async fn values_carry_the_ship_and_its_greyed_functions_and_a_ship_change_switch
 }
 
 #[tokio::test]
+async fn a_ship_shows_its_friendly_name_or_the_users_own_everywhere() {
+    let frame = json!({ "vehicle": { "state": {
+        "name": "DRAK_Corsair_877723283935",
+        "class_name": "DRAK_Corsair",
+        "master_mode": { "mode": "VEHICLE_MASTER_MODE_SCM" },
+    } } });
+    let rig = Rig::start_full(Some(vec![frame; 400])).await;
+    let file = rig.dir.path().join("app-settings.json");
+    std::fs::write(&file, r#"{ "splash": false }"#).unwrap();
+    let mut p = rig.portal("dash").await;
+    let mut other = rig.portal("dash").await;
+    other.call(1, json!({ "type": "dash.get" })).await;
+    p.call(1, json!({ "type": "dash.get" })).await;
+    let names = p.until(|m| m["type"] == "shipNames").await;
+    assert_eq!(names["names"], json!({}));
+    let values = p
+        .until(|m| m["type"] == "values" && m["ship"].is_object())
+        .await;
+    assert_eq!(values["values"]["ship.name"]["text"], "Drake Corsair");
+    assert_eq!(values["ship"]["name"], "Drake Corsair");
+    assert_eq!(values["ship"]["key"], "Drake Interplanetary / Corsair");
+    let status = p
+        .until(|m| m["type"] == "status" && m["status"]["inShip"] == true)
+        .await;
+    assert_eq!(status["status"]["ship"], "Drake Corsair");
+
+    let bad = p
+        .call(
+            2,
+            json!({ "type": "shipNames.set", "className": "DRAK_Corsair", "name": "<b>" }),
+        )
+        .await;
+    assert_eq!(bad["problems"].as_array().unwrap().len(), 1);
+    p.until(|m| m["type"] == "notice" && m["text"].as_str().unwrap().contains("ship name"))
+        .await;
+
+    let set = p
+        .call(
+            3,
+            json!({ "type": "shipNames.set", "className": "DRAK_Corsair", "name": "Old Betsy" }),
+        )
+        .await;
+    assert_eq!(set["problems"], json!([]));
+    other
+        .until(|m| m["type"] == "shipNames" && m["names"]["DRAK_Corsair"] == "Old Betsy")
+        .await;
+    let values = p
+        .until(|m| m["type"] == "values" && m["ship"]["name"] == "Old Betsy")
+        .await;
+    assert_eq!(values["values"]["ship.name"]["text"], "Old Betsy");
+    assert_eq!(values["ship"]["derivedName"], "Drake Corsair");
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(
+        saved,
+        json!({ "splash": false, "shipNames": { "DRAK_Corsair": "Old Betsy" } })
+    );
+
+    let made = p.call(4, json!({ "type": "dash.createForShip" })).await;
+    assert_eq!(made["dashboard"]["name"], "Old Betsy");
+    let push = p
+        .until(|m| m["type"] == "dashboard" && m["board"]["id"] == "drak_corsair")
+        .await;
+    assert_eq!(push["dashboards"][1]["shipName"], "Old Betsy");
+
+    let clear = p
+        .call(
+            5,
+            json!({ "type": "shipNames.set", "className": "DRAK_Corsair", "name": "" }),
+        )
+        .await;
+    assert_eq!(clear["problems"], json!([]));
+    p.until(|m| m["type"] == "values" && m["ship"]["name"] == "Drake Corsair")
+        .await;
+    let push = p
+        .until(|m| m["type"] == "dashboard" && m["dashboards"][1]["shipName"] == "Drake Corsair")
+        .await;
+    assert_eq!(
+        push["dashboards"][1]["name"], "Old Betsy",
+        "the dashboard keeps its own name"
+    );
+    rig.service.close().await;
+}
+
+#[tokio::test]
 async fn a_new_ship_with_switching_on_shows_its_dashboard_after_two_seconds() {
     let mut frames = vec![json!({ "vehicle": { "state": { "class_name": "ANVL_Arrow" } } }); 200];
     frames.extend(vec![corsair_frame(); 400]);
-    let rig = Rig::start_full(None, Some(frames)).await;
+    let rig = Rig::start_full(Some(frames)).await;
     let store = rig.service.dashboards();
     let known = sc_service::dashboard::Known::default();
     let corsair = sc_service::dashboard::ShipRef {

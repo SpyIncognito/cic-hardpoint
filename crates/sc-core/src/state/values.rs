@@ -56,6 +56,7 @@ pub struct ValueDef {
 pub enum Derive {
     Manufacturer,
     Model,
+    Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -114,33 +115,49 @@ const CREW_ROLE: &[(&str, &str)] = &[
     ("ACTOR_CREW_ROLE_CREW", "CREW"),
 ];
 
-/// Manufacturer codes that prefix a ship's class name, e.g. DRAK_Corsair. Best effort: the game
-/// does not publish this list, so a code missing here leaves the class name whole.
-pub const MANUFACTURERS: &[(&str, &str)] = &[
-    ("AEGS", "Aegis Dynamics"),
-    ("ANVL", "Anvil Aerospace"),
-    ("AOPO", "Aopoa"),
-    ("ARGO", "Argo Astronautics"),
-    ("BANU", "Banu"),
-    ("CNOU", "Consolidated Outland"),
-    ("CRUS", "Crusader Industries"),
-    ("DRAK", "Drake Interplanetary"),
-    ("ESPR", "Esperia"),
-    ("GAMA", "Gatac Manufacture"),
-    ("GRIN", "Greycat Industrial"),
-    ("KRIG", "Kruger Intergalactic"),
-    ("MISC", "Musashi Industrial and Starflight Concern"),
-    ("MRAI", "Mirai"),
-    ("ORIG", "Origin Jumpworks"),
-    ("RSI", "Roberts Space Industries"),
-    ("TMBL", "Tumbril Land Systems"),
-    ("XIAN", "Aopoa"),
+/// A manufacturer code that prefixes a ship's class name (DRAK in DRAK_Corsair), the maker's
+/// full name, and the short one a ship's name starts with ("Drake Corsair").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Maker {
+    pub code: &'static str,
+    pub name: &'static str,
+    pub short: &'static str,
+}
+
+const fn maker(code: &'static str, name: &'static str, short: &'static str) -> Maker {
+    Maker { code, name, short }
+}
+
+/// Best effort: the game does not publish this list, so a code missing here leaves the class
+/// name whole.
+pub const MANUFACTURERS: &[Maker] = &[
+    maker("AEGS", "Aegis Dynamics", "Aegis"),
+    maker("ANVL", "Anvil Aerospace", "Anvil"),
+    maker("AOPO", "Aopoa", "Aopoa"),
+    maker("ARGO", "Argo Astronautics", "Argo"),
+    maker("BANU", "Banu", "Banu"),
+    maker("CNOU", "Consolidated Outland", "C.O."),
+    maker("CRUS", "Crusader Industries", "Crusader"),
+    maker("DRAK", "Drake Interplanetary", "Drake"),
+    maker("ESPR", "Esperia", "Esperia"),
+    maker("GAMA", "Gatac Manufacture", "Gatac"),
+    maker("GRIN", "Greycat Industrial", "Greycat"),
+    maker("KRIG", "Kruger Intergalactic", "Kruger"),
+    maker("MISC", "Musashi Industrial and Starflight Concern", "MISC"),
+    maker("MRAI", "Mirai", "Mirai"),
+    maker("ORIG", "Origin Jumpworks", "Origin"),
+    maker("RSI", "Roberts Space Industries", "RSI"),
+    maker("TMBL", "Tumbril Land Systems", "Tumbril"),
+    maker("VNCL", "Vanduul", "Vanduul"),
+    // Aopoa ships carry either code (XIAN on the older ones).
+    maker("XIAN", "Aopoa", "Aopoa"),
+    maker("XNAA", "Aopoa", "Aopoa"),
 ];
 
 /// The class name's manufacturer and the rest, when its code is a known one.
-fn split_class_name(class_name: &str) -> (Option<&'static str>, &str) {
+fn split_class_name(class_name: &str) -> (Option<&'static Maker>, &str) {
     if let Some((code, model)) = class_name.split_once('_')
-        && let Some((_, maker)) = MANUFACTURERS.iter().find(|(c, _)| *c == code)
+        && let Some(maker) = MANUFACTURERS.iter().find(|m| m.code == code)
     {
         return (Some(maker), model);
     }
@@ -150,7 +167,10 @@ fn split_class_name(class_name: &str) -> (Option<&'static str>, &str) {
 /// The manufacturer the game names, else the one the class name's code stands for.
 pub fn ship_manufacturer(manufacturer: &str, class_name: &str) -> String {
     if manufacturer.is_empty() {
-        split_class_name(class_name).0.unwrap_or("").to_owned()
+        split_class_name(class_name)
+            .0
+            .map_or("", |m| m.name)
+            .to_owned()
     } else {
         manufacturer.to_owned()
     }
@@ -159,6 +179,44 @@ pub fn ship_manufacturer(manufacturer: &str, class_name: &str) -> String {
 /// The class name without its manufacturer code, with spaces for underscores.
 pub fn ship_model(class_name: &str) -> String {
     split_class_name(class_name).1.replace('_', " ")
+}
+
+/// An entity name is the class name with the entity id after it: DRAK_Corsair_877723283935.
+fn without_entity_id(name: &str) -> &str {
+    match name.rsplit_once('_') {
+        Some((head, id)) if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) => head,
+        _ => name,
+    }
+}
+
+/// The ship's name for people: the game's own name when it is already plain words, else the
+/// short maker and the model from the class name (or the entity name), e.g. "Drake Corsair".
+/// The game sends no display name, so this is derived.
+pub fn ship_name(name: &str, class_name: &str) -> String {
+    let name = name.trim();
+    if !name.is_empty() && !name.contains('_') {
+        return name.to_owned();
+    }
+    let class_name = class_name.trim();
+    let base = without_entity_id(if class_name.is_empty() {
+        name
+    } else {
+        class_name
+    });
+    match split_class_name(base) {
+        (Some(maker), model) if !model.is_empty() => {
+            format!("{} {}", maker.short, model.replace('_', " "))
+        }
+        _ => base.replace('_', " ").trim().to_owned(),
+    }
+}
+
+/// The short maker for a full manufacturer name, e.g. "Drake" for "Drake Interplanetary".
+pub fn maker_short(manufacturer: &str) -> Option<&'static str> {
+    MANUFACTURERS
+        .iter()
+        .find(|m| m.name.eq_ignore_ascii_case(manufacturer))
+        .map(|m| m.short)
 }
 
 impl ValueDef {
@@ -378,7 +436,9 @@ fn build_values() -> Vec<ValueDef> {
             "vehicle.state.master_mode.mode",
         )
         .enum_text(MASTER_MODES),
-        ship("ship.name", "Ship", "SHIP", Text, "vehicle.state.name").fallback(json!("")),
+        ship("ship.name", "Ship", "SHIP", Text, "vehicle.state.name")
+            .fallback(json!(""))
+            .derive(Derive::Name),
     ];
 
     for k in [
@@ -833,6 +893,12 @@ pub fn read_value(state: &StateModel, id: &str) -> Option<ValueView> {
             let text = match def.derive {
                 Some(Derive::Manufacturer) => ship_manufacturer(&raw, &class_name()),
                 Some(Derive::Model) => ship_model(&raw),
+                Some(Derive::Name) => {
+                    let class_name = class_name();
+                    state
+                        .ship_name_for(&class_name)
+                        .map_or_else(|| ship_name(&raw, &class_name), str::to_owned)
+                }
                 None => raw,
             };
             fresh(if text.is_empty() {
@@ -908,6 +974,58 @@ mod tests {
         s.ingest(&json!({ "vehicle": { "state": { "name": "X", "class_name": "SHIP_CLASS" } } }));
         assert_eq!(text(&s, "ship.manufacturer"), DASH);
         assert_eq!(text(&s, "ship.model"), "SHIP CLASS");
+    }
+
+    #[test]
+    fn derives_a_friendly_ship_name() {
+        assert_eq!(
+            ship_name("DRAK_Corsair_877723283935", "DRAK_Corsair"),
+            "Drake Corsair"
+        );
+        assert_eq!(ship_name("DRAK_Corsair_877723283935", ""), "Drake Corsair");
+        assert_eq!(ship_name("", "ANVL_Carrack"), "Anvil Carrack");
+        assert_eq!(ship_name("", "AEGS_Gladius"), "Aegis Gladius");
+        assert_eq!(ship_name("", "DRAK_Cutlass_Black"), "Drake Cutlass Black");
+        assert_eq!(ship_name("", "VNCL_Scythe"), "Vanduul Scythe");
+        assert_eq!(ship_name("", "XNAA_SanTokYai"), "Aopoa SanTokYai");
+        assert_eq!(ship_name("", "XIAN_Nox"), "Aopoa Nox");
+        assert_eq!(ship_name("", "CNOU_Mustang_Alpha"), "C.O. Mustang Alpha");
+        assert_eq!(ship_name("", "ORIG_600i"), "Origin 600i");
+        assert_eq!(ship_name("", "ZZZZ_Mystery_Ship"), "ZZZZ Mystery Ship");
+        assert_eq!(ship_name("ZZZZ_Mystery_42", ""), "ZZZZ Mystery");
+        assert_eq!(ship_name("Corsair", "DRAK_Corsair"), "Corsair");
+        assert_eq!(ship_name("  My Ship ", "DRAK_Corsair"), "My Ship");
+        assert_eq!(ship_name("", ""), "");
+        assert_eq!(ship_name("_123", ""), "");
+        assert_eq!(maker_short("drake interplanetary"), Some("Drake"));
+        assert_eq!(maker_short("Nobody"), None);
+    }
+
+    #[test]
+    fn every_manufacturer_code_is_listed_once_with_a_short_name() {
+        let codes: HashSet<_> = MANUFACTURERS.iter().map(|m| m.code).collect();
+        assert_eq!(codes.len(), MANUFACTURERS.len());
+        assert!(
+            MANUFACTURERS
+                .iter()
+                .all(|m| !m.short.is_empty() && !m.code.contains('_'))
+        );
+    }
+
+    #[test]
+    fn the_ship_value_is_the_friendly_name_or_the_users_own() {
+        let mut s = StateModel::default();
+        s.ingest(&json!({ "vehicle": { "state": { "name": "DRAK_Corsair_877723283935", "class_name": "DRAK_Corsair" } } }));
+        assert_eq!(read_value(&s, "ship.name").unwrap().text, "Drake Corsair");
+        s.set_ship_names(HashMap::from([(
+            "DRAK_Corsair".to_owned(),
+            "Old Betsy".to_owned(),
+        )]));
+        assert_eq!(read_value(&s, "ship.name").unwrap().text, "Old Betsy");
+        s.ingest(&json!({ "vehicle": { "state": { "name": "ANVL_Arrow_1", "class_name": "ANVL_Arrow" } } }));
+        assert_eq!(read_value(&s, "ship.name").unwrap().text, "Anvil Arrow");
+        s.ingest(&json!({ "vehicle": { "state": { "health": 1 } } }));
+        assert_eq!(read_value(&s, "ship.name").unwrap().text, DASH);
     }
 
     #[test]

@@ -1,0 +1,5 @@
+target
+**/node_modules
+.git
+streamdeck
+crates/sc-service/contract

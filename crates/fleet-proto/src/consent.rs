@@ -194,6 +194,7 @@ mod tests {
                 ("ship.hull", FieldValue::text("x", Tone::Info)),
                 ("char.health", FieldValue::text("x", Tone::Info)),
             ]),
+            source: None,
         };
         let mut c = SendConsent::none();
         c.group(Consent::Ship, true);

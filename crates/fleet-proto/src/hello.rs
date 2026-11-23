@@ -6,7 +6,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_MAJOR: u32 = 1;
+/// 2 since fleet-proto 0.4.0: the unit tree and member ids replace wings, groups and keys.
+pub const PROTOCOL_MAJOR: u32 = 2;
 pub const PROTOCOL_MINOR: u32 = 0;
 
 /// Capabilities a side may offer. A side ignores ones it does not know.
@@ -15,8 +16,17 @@ pub mod capability {
     pub const CARDS: &str = "cards";
     /// Honours viewers' subscriptions.
     pub const SUBSCRIBE: &str = "subscribe";
-    /// Sends or receives event structure (wings, groups, roles).
+    /// Sends or receives event structure (the unit tree and roles).
     pub const STRUCTURE: &str = "structure";
+    /// Takes `join` after the handshake: join codes, peer to peer. A server without it or
+    /// `connect` puts every connection in one event.
+    pub const JOIN: &str = "join";
+    /// Takes `connect` after the handshake: CIC accounts, connection tokens and the event
+    /// choice (fleet-proto 0.4.0).
+    pub const CONNECT: &str = "connect";
+    /// Signs the identity transcript with the TLS session's exported keying material appended
+    /// ([`crate::identity::TlsBinding`]). Hardpoint refuses a server without it.
+    pub const TLS_BINDING: &str = "tls-binding";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

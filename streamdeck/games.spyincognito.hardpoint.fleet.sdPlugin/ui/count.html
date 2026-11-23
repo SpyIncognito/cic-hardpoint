@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fleet count</title>
+<link rel="stylesheet" href="pi.css">
+</head>
+<body>
+<label>Scope <select data-setting="scope" data-list="scopes"></select></label>
+<label>Amber below % <input type="number" min="0" max="100" data-setting="amber" data-default="80"></label>
+<label>Red below % <input type="number" min="0" max="100" data-setting="red" data-default="60"></label>
+<p>Shows how many are up. Press the key to refresh.</p>
+<script src="pi.js"></script>
+</body>
+</html>

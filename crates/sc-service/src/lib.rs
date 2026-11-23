@@ -4,7 +4,9 @@
 //!
 //! The MFD pages (`/mfd`, `/mip`) are not ported: the dashboard replaces them.
 
+pub mod app_settings;
 pub mod bus;
+pub mod bus_fleet;
 pub mod busfile;
 pub mod dashboard;
 pub mod fleet;
@@ -12,8 +14,13 @@ pub mod json;
 pub mod pages;
 pub mod paths;
 pub mod portal;
+pub mod relay;
 mod service;
 pub mod ship;
+pub mod ship_names;
+pub mod time_settings;
+mod time_zones;
+pub mod tls;
 pub mod token;
 
 pub use service::{DEFAULT_PORT, Service, ServiceOptions};

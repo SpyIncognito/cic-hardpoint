@@ -156,7 +156,8 @@
       "kind": "text",
       "path": "vehicle.state.name",
       "fallback": "",
-      "vehicle": true
+      "vehicle": true,
+      "derive": "name"
     },
     {
       "id": "caution.pwr",

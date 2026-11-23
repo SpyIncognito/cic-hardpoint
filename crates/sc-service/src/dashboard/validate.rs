@@ -14,7 +14,7 @@ use sc_core::js;
 use sc_core::state::value_def;
 
 use super::model::{
-    Bezel, BezelBind, BezelButton, Bind, BindKind, COLUMNS, DEFAULT_ROWS, Dashboard,
+    Bezel, BezelBind, BezelButton, Bind, BindKind, CELLS, COLUMNS, DEFAULT_ROWS, Dashboard,
     KEYBIND_REMOVED, KindDef, MAX_BEZEL_BUTTONS, MAX_BUTTON_INDEX, MAX_DISPLAY_LABEL,
     MAX_GAMEPAD_ID, MAX_LABEL, MAX_ROWS, MAX_TABS, MAX_WIDGETS, MIN_ROWS, Mode, OnOff, Placement,
     REMOVED_KIND, REMOVED_LOOKS, SCHEMA_VERSION, Tab, Widget, is_lamp_value, kind_def,
@@ -88,7 +88,7 @@ fn is_action(s: &str) -> bool {
 }
 
 /// Plain text only: no markup, no control characters.
-pub(super) fn is_plain(s: &str) -> bool {
+pub fn is_plain(s: &str) -> bool {
     !s.chars().any(|c| c == '<' || c == '>' || c.is_control())
 }
 
@@ -115,6 +115,14 @@ pub fn check_theme_ref(raw: &Value, known: &Known) -> Vec<String> {
         }
         Some(_) => vec![],
     }
+}
+
+/// A cell size: one of [`CELLS`] px.
+pub fn check_cell(raw: &Value) -> Result<u32, String> {
+    raw.as_u64()
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| CELLS.contains(n))
+        .ok_or_else(|| "the cell size is 48, 64, 72, 80 or 96 px".to_owned())
 }
 
 pub fn check_name(name: Option<&Value>, what: &str) -> Vec<String> {
@@ -878,7 +886,7 @@ pub fn read_dashboard(input: Option<&Value>, known: &Known) -> (Option<Dashboard
     summary.skipped.extend(
         js_keys(obj)
             .into_iter()
-            .filter(|k| !["schemaVersion", "tabs", "theme"].contains(k))
+            .filter(|k| !["schemaVersion", "tabs", "theme", "cell"].contains(k))
             .map(|k| format!("Ignored field {}", quote_str(k))),
     );
     let mut theme = None;
@@ -892,6 +900,16 @@ pub fn read_dashboard(input: Option<&Value>, known: &Known) -> (Option<Dashboard
                 .push(format!("Dashboard theme left out, {}", t.join("; ")));
         }
     }
+    let cell = match obj.get("cell") {
+        None | Some(Value::Null) => None,
+        Some(raw) => match check_cell(raw) {
+            Ok(c) => Some(c),
+            Err(p) => {
+                summary.skipped.push(format!("Cell size left out, {p}"));
+                None
+            }
+        },
+    };
     if list.len() > MAX_TABS {
         summary.skipped.push(format!(
             "{} tabs over the cap of {MAX_TABS} left out",
@@ -944,6 +962,7 @@ pub fn read_dashboard(input: Option<&Value>, known: &Known) -> (Option<Dashboard
         Some(Dashboard {
             schema_version: SCHEMA_VERSION,
             theme,
+            cell,
             tabs,
         }),
         summary,

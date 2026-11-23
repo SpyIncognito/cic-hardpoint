@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -89,6 +90,8 @@ pub struct StateModel {
     next_listener: u64,
     stale_ms: i64,
     now: Clock,
+    // The user's own ship names live here so every reader of `ship.name` shows the same one.
+    ship_names: HashMap<String, String>,
 }
 
 impl Default for StateModel {
@@ -122,7 +125,20 @@ impl StateModel {
             next_listener: 0,
             stale_ms: opts.stale_ms,
             now: opts.now,
+            ship_names: HashMap::new(),
         }
+    }
+
+    /// The names the user gave ships, by class name; `ship.name` shows them over the derived one.
+    pub fn set_ship_names(&mut self, names: HashMap<String, String>) {
+        if self.ship_names != names {
+            self.ship_names = names;
+            self.notify();
+        }
+    }
+
+    pub fn ship_name_for(&self, class_name: &str) -> Option<&str> {
+        self.ship_names.get(class_name).map(String::as_str)
     }
 
     /// Merge a frame: each object-valued top-level field replaces that section; others are ignored.

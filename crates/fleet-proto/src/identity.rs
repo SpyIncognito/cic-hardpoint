@@ -13,6 +13,10 @@
 //!    transcript for its own side ([`crate::Message::ClientProof`]).
 //! 4. Server: [`ChallengeIssuer::accept`] checks the proof, that the challenge is one it issued
 //!    and has not been answered, and that the answer came within [`CHALLENGE_WINDOW_MS`].
+//!
+//! When both hellos offer `tls-binding`, both proofs also cover a [`TlsBinding`]: keying material
+//! each side exports from its own end of the TLS session. A party that terminates TLS and relays
+//! the handshake has two sessions with two different values, so neither proof verifies across it.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -31,6 +35,21 @@ pub const NONCE_LEN: usize = 32;
 /// Challenges a server holds open at once; past this, the oldest are dropped.
 pub const MAX_PENDING: usize = 4096;
 const TRANSCRIPT_TAG: &[u8] = b"fleet-proto identity v1\0";
+/// The TLS exporter label for [`TlsBinding`] (RFC 8446 section 7.5; no context).
+pub const TLS_BINDING_LABEL: &[u8] = b"EXPORTER-cic-fleet-identity-v1";
+pub const TLS_BINDING_LEN: usize = 32;
+
+/// Keying material exported from the TLS session with [`TLS_BINDING_LABEL`], no context, and
+/// [`TLS_BINDING_LEN`] bytes. Each side exports its own; both are equal only when the two ends
+/// share one TLS session.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct TlsBinding(pub [u8; TLS_BINDING_LEN]);
+
+impl fmt::Debug for TlsBinding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("TlsBinding(..)")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IdentityError {
@@ -200,16 +219,19 @@ pub enum Side {
     Client,
 }
 
-/// The bytes each side signs: which side, both nonces, the time, and both keys. A proof made for
-/// one connection, side or key pair verifies for no other.
+/// The bytes each side signs: which side, both nonces, the time, both keys, and the TLS binding
+/// when both sides offer it. A proof made for one connection, side or key pair verifies for no
+/// other; with a binding, for no other TLS session either.
 pub fn transcript(
     side: Side,
     challenge: &Challenge,
     client_nonce: &Nonce,
     server: &PublicKey,
     client: &PublicKey,
+    binding: Option<&TlsBinding>,
 ) -> Vec<u8> {
-    let mut t = Vec::with_capacity(TRANSCRIPT_TAG.len() + 1 + 2 * NONCE_LEN + 8 + 64);
+    let mut t =
+        Vec::with_capacity(TRANSCRIPT_TAG.len() + 1 + 2 * NONCE_LEN + 8 + 64 + TLS_BINDING_LEN);
     t.extend_from_slice(TRANSCRIPT_TAG);
     t.push(match side {
         Side::Server => b'S',
@@ -220,6 +242,9 @@ pub fn transcript(
     t.extend_from_slice(&challenge.timestamp_ms.to_be_bytes());
     t.extend_from_slice(&server.0);
     t.extend_from_slice(&client.0);
+    if let Some(binding) = binding {
+        t.extend_from_slice(&binding.0);
+    }
     t
 }
 
@@ -230,6 +255,8 @@ pub struct ClientHandshake<'a> {
     /// The server key from the invite. `None` only for a first contact the user confirms by
     /// fingerprint.
     pub pinned: Option<PublicKey>,
+    /// This side's [`TlsBinding`], when both hellos offer `tls-binding`.
+    pub binding: Option<TlsBinding>,
 }
 
 impl ClientHandshake<'_> {
@@ -247,8 +274,16 @@ impl ClientHandshake<'_> {
             return Err(IdentityError::Stale);
         }
         let client = self.identity.public();
+        let binding = self.binding.as_ref();
         server.verify(
-            &transcript(Side::Server, challenge, &self.nonce, server, &client),
+            &transcript(
+                Side::Server,
+                challenge,
+                &self.nonce,
+                server,
+                &client,
+                binding,
+            ),
             proof,
         )?;
         Ok(self.identity.sign(&transcript(
@@ -257,6 +292,7 @@ impl ClientHandshake<'_> {
             &self.nonce,
             server,
             &client,
+            binding,
         )))
     }
 }
@@ -272,12 +308,14 @@ impl ChallengeIssuer {
         Self::default()
     }
 
-    /// A fresh challenge, with the server's proof for this client (step 2).
+    /// A fresh challenge, with the server's proof for this client (step 2). `binding` is the
+    /// server's own [`TlsBinding`] when both hellos offer `tls-binding`.
     pub fn issue(
         &mut self,
         server: &Identity,
         client: &PublicKey,
         client_nonce: &Nonce,
+        binding: Option<&TlsBinding>,
         now_ms: i64,
     ) -> Result<(Challenge, Signature), IdentityError> {
         self.prune(now_ms);
@@ -301,11 +339,14 @@ impl ChallengeIssuer {
             client_nonce,
             &server.public(),
             client,
+            binding,
         ));
         Ok((challenge, proof))
     }
 
-    /// The client's answer (step 4). A challenge is spent by its first answer, right or wrong.
+    /// The client's answer (step 4), with the same `binding` as [`Self::issue`]. A challenge is
+    /// spent by its first answer, right or wrong.
+    #[allow(clippy::too_many_arguments)]
     pub fn accept(
         &mut self,
         server: &PublicKey,
@@ -313,6 +354,7 @@ impl ChallengeIssuer {
         client_nonce: &Nonce,
         challenge: &Challenge,
         proof: &Signature,
+        binding: Option<&TlsBinding>,
         now_ms: i64,
     ) -> Result<(), IdentityError> {
         let issued = self
@@ -323,7 +365,14 @@ impl ChallengeIssuer {
             return Err(IdentityError::Stale);
         }
         client.verify(
-            &transcript(Side::Client, challenge, client_nonce, server, client),
+            &transcript(
+                Side::Client,
+                challenge,
+                client_nonce,
+                server,
+                client,
+                binding,
+            ),
             proof,
         )
     }
@@ -351,15 +400,30 @@ mod tests {
         client_nonce: Nonce,
         challenge: Challenge,
         server_proof: Signature,
+        binding: Option<TlsBinding>,
+    }
+
+    fn binding(n: u8) -> TlsBinding {
+        TlsBinding([n; TLS_BINDING_LEN])
     }
 
     fn setup() -> Setup {
+        setup_bound(Some(binding(1)))
+    }
+
+    fn setup_bound(binding: Option<TlsBinding>) -> Setup {
         let server = Identity::generate().unwrap();
         let client = Identity::generate().unwrap();
         let mut issuer = ChallengeIssuer::new();
         let client_nonce = Nonce::random().unwrap();
         let (challenge, server_proof) = issuer
-            .issue(&server, &client.public(), &client_nonce, NOW)
+            .issue(
+                &server,
+                &client.public(),
+                &client_nonce,
+                binding.as_ref(),
+                NOW,
+            )
             .unwrap();
         Setup {
             server,
@@ -368,17 +432,29 @@ mod tests {
             client_nonce,
             challenge,
             server_proof,
+            binding,
         }
     }
 
     impl Setup {
         fn client_answer(&self) -> Result<Signature, IdentityError> {
+            self.client_answer_with(self.binding)
+        }
+
+        fn handshake(&self, binding: Option<TlsBinding>) -> ClientHandshake<'_> {
             ClientHandshake {
                 identity: &self.client,
                 nonce: self.client_nonce,
                 pinned: Some(self.server.public()),
+                binding,
             }
-            .answer(
+        }
+
+        fn client_answer_with(
+            &self,
+            binding: Option<TlsBinding>,
+        ) -> Result<Signature, IdentityError> {
+            self.handshake(binding).answer(
                 &self.server.public(),
                 &self.challenge,
                 &self.server_proof,
@@ -387,12 +463,22 @@ mod tests {
         }
 
         fn accept(&mut self, proof: &Signature, now: i64) -> Result<(), IdentityError> {
+            self.accept_with(proof, self.binding, now)
+        }
+
+        fn accept_with(
+            &mut self,
+            proof: &Signature,
+            binding: Option<TlsBinding>,
+            now: i64,
+        ) -> Result<(), IdentityError> {
             self.issuer.accept(
                 &self.server.public(),
                 &self.client.public(),
                 &self.client_nonce,
                 &self.challenge,
                 proof,
+                binding.as_ref(),
                 now,
             )
         }
@@ -417,6 +503,7 @@ mod tests {
             &s.client_nonce,
             &s.server.public(),
             &s.client.public(),
+            s.binding.as_ref(),
         ));
         assert_eq!(s.accept(&proof, NOW + 20), Err(IdentityError::BadSignature));
     }
@@ -425,11 +512,7 @@ mod tests {
     fn a_server_that_is_not_the_pinned_one_is_refused() {
         let s = setup();
         let impostor = Identity::generate().unwrap();
-        let hs = ClientHandshake {
-            identity: &s.client,
-            nonce: s.client_nonce,
-            pinned: Some(s.server.public()),
-        };
+        let hs = s.handshake(s.binding);
         assert_eq!(
             hs.answer(&impostor.public(), &s.challenge, &s.server_proof, NOW),
             Err(IdentityError::WrongServerKey)
@@ -441,6 +524,7 @@ mod tests {
             &s.client_nonce,
             &s.server.public(),
             &s.client.public(),
+            s.binding.as_ref(),
         ));
         assert_eq!(
             hs.answer(&s.server.public(), &s.challenge, &forged, NOW),
@@ -474,11 +558,7 @@ mod tests {
     #[test]
     fn a_client_refuses_a_server_clock_far_off() {
         let s = setup();
-        let hs = ClientHandshake {
-            identity: &s.client,
-            nonce: s.client_nonce,
-            pinned: Some(s.server.public()),
-        };
+        let hs = s.handshake(s.binding);
         assert_eq!(
             hs.answer(
                 &s.server.public(),
@@ -499,10 +579,106 @@ mod tests {
                 &s.server,
                 &s.client.public(),
                 &n,
+                None,
                 NOW + CHALLENGE_WINDOW_MS + 1,
             )
             .unwrap();
         assert_eq!(s.issuer.pending(), 1);
+    }
+
+    #[test]
+    fn an_unbound_exchange_still_verifies() {
+        let mut s = setup_bound(None);
+        let proof = s.client_answer().unwrap();
+        assert_eq!(s.accept(&proof, NOW + 20), Ok(()));
+    }
+
+    /// A relay in the middle has one TLS session with each side, so each side exports a
+    /// different binding: the server's proof fails at the client, and a client proof made for
+    /// the other session fails at the server.
+    #[test]
+    fn proofs_do_not_verify_across_two_tls_sessions() {
+        let mut s = setup_bound(Some(binding(1)));
+        assert_eq!(
+            s.client_answer_with(Some(binding(2))),
+            Err(IdentityError::BadSignature)
+        );
+        let proof = s.client_answer().unwrap();
+        assert_eq!(
+            s.accept_with(&proof, Some(binding(2)), NOW + 20),
+            Err(IdentityError::BadSignature)
+        );
+    }
+
+    #[test]
+    fn a_bound_proof_does_not_verify_unbound_or_the_other_way() {
+        let s = setup_bound(Some(binding(1)));
+        assert_eq!(s.client_answer_with(None), Err(IdentityError::BadSignature));
+        let mut s = setup_bound(None);
+        let proof = s.client_answer().unwrap();
+        assert_eq!(
+            s.accept_with(&proof, Some(binding(1)), NOW + 20),
+            Err(IdentityError::BadSignature)
+        );
+    }
+
+    #[test]
+    fn the_binding_is_appended_to_the_v1_transcript() {
+        let s = setup();
+        let args = (
+            &s.challenge,
+            &s.client_nonce,
+            &s.server.public(),
+            &s.client.public(),
+        );
+        let plain = transcript(Side::Client, args.0, args.1, args.2, args.3, None);
+        let bound = transcript(
+            Side::Client,
+            args.0,
+            args.1,
+            args.2,
+            args.3,
+            Some(&binding(9)),
+        );
+        assert_eq!(
+            plain.len(),
+            TRANSCRIPT_TAG.len() + 1 + 32 + 32 + 8 + 32 + 32
+        );
+        assert_eq!(&bound[..plain.len()], &plain[..]);
+        assert_eq!(&bound[plain.len()..], &[9; TLS_BINDING_LEN]);
+    }
+
+    /// The layout the CIC relay signs and verifies, byte for byte (193 bytes bound).
+    #[test]
+    fn the_bound_transcript_has_the_agreed_layout() {
+        let challenge = Challenge {
+            nonce: Nonce([0x11; NONCE_LEN]),
+            timestamp_ms: 0x0102_0304_0506_0708,
+        };
+        let client_nonce = Nonce([0x22; NONCE_LEN]);
+        let (server, client) = (PublicKey([0x33; 32]), PublicKey([0x44; 32]));
+        let binding = binding(0x55);
+        for (side, letter) in [(Side::Server, 0x53), (Side::Client, 0x43)] {
+            let t = transcript(
+                side,
+                &challenge,
+                &client_nonce,
+                &server,
+                &client,
+                Some(&binding),
+            );
+            assert_eq!(t.len(), 193);
+            assert_eq!(&t[0..24], b"fleet-proto identity v1\0");
+            assert_eq!(t[24], letter);
+            assert_eq!(&t[25..57], &[0x11; 32]);
+            assert_eq!(&t[57..89], &[0x22; 32]);
+            assert_eq!(&t[89..97], &[1, 2, 3, 4, 5, 6, 7, 8]);
+            assert_eq!(&t[97..129], &[0x33; 32]);
+            assert_eq!(&t[129..161], &[0x44; 32]);
+            assert_eq!(&t[161..193], &[0x55; 32]);
+        }
+        assert_eq!(TLS_BINDING_LABEL, b"EXPORTER-cic-fleet-identity-v1");
+        assert_eq!(TLS_BINDING_LEN, 32);
     }
 
     #[test]

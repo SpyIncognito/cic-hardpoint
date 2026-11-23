@@ -1,7 +1,7 @@
 [package]
 name = "fleet-proto"
 description = "The fleet wire protocol shared by Hardpoint and CIC: hello, identity challenge, cards, consent, subscriptions, roll-ups, roles and event structure."
-version = "0.1.0"
+version = "0.4.2"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

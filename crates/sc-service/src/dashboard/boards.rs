@@ -13,8 +13,8 @@ use super::model::{
     MAX_TABS, ShipRef, Tab, generic_board, starter, starter_tab,
 };
 use super::validate::{
-    Known, check_name, check_tab, check_theme_ref, extra_keys, is_id, is_plain, quote_str,
-    read_dashboard,
+    Known, check_cell, check_name, check_tab, check_theme_ref, extra_keys, is_id, is_plain,
+    quote_str, read_dashboard,
 };
 use crate::json::is_integer;
 
@@ -24,7 +24,7 @@ const FILE_FIELDS: &[&str] = &[
     "switchOnShipChange",
     "dashboards",
 ];
-const BOARD_FIELDS: &[&str] = &["id", "name", "ship", "theme", "tabs"];
+const BOARD_FIELDS: &[&str] = &["id", "name", "ship", "theme", "cell", "tabs"];
 const SHIP_FIELDS: &[&str] = &["manufacturer", "model", "className"];
 
 /// What reading the file gave.
@@ -197,6 +197,16 @@ fn read_board(raw: &Value, known: &Known, skipped: &mut Vec<String>) -> Result<B
             skipped.push(format!("{place}: theme left out, {}", t.join("; ")));
         }
     }
+    let cell = match obj.get("cell") {
+        None | Some(Value::Null) => None,
+        Some(raw) => match check_cell(raw) {
+            Ok(c) => Some(c),
+            Err(p) => {
+                skipped.push(format!("{place}: cell size left out, {p}"));
+                None
+            }
+        },
+    };
     let list = obj.get("tabs").and_then(Value::as_array);
     let Some(list) = list else {
         return Err(format!("{place}: it has no tab list"));
@@ -232,6 +242,7 @@ fn read_board(raw: &Value, known: &Known, skipped: &mut Vec<String>) -> Result<B
         name: js::trim(name).to_owned(),
         ship,
         theme,
+        cell,
         tabs,
     })
 }

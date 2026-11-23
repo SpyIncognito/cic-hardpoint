@@ -1,0 +1,6 @@
+body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8; font: 12px "Segoe UI", Arial, sans-serif; }
+label { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+select, input[type="number"] { width: 100%; box-sizing: border-box; background: #3d3d3d; color: #d8d8d8; border: 1px solid #555; padding: 3px; }
+select[multiple] { min-height: 96px; }
+input[type="checkbox"] { justify-self: start; }
+p { color: #9a9a9a; margin: 8px 0; line-height: 1.4; }

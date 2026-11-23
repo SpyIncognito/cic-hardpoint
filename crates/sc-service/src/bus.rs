@@ -1,8 +1,9 @@
 //! The local bus: serves one ControlCore to surfaces in other processes (the Stream Deck plugin)
 //! over a WebSocket on 127.0.0.1, protocol version 1 as in PROTOCOL.md section 1. Keeps the core
 //! following the game while at least one client is connected. A hello may list `capabilities`;
-//! the service acts on none of them now and ignores the ones it does not know, so a client that
-//! still says `keys` connects as any other and is never asked to press a key.
+//! `fleet.status` makes the client a read-only fleet status reader ([`crate::bus_fleet`]), and
+//! the others are ignored, so a client that still says `keys` connects as any other and is never
+//! asked to press a key.
 
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -25,7 +26,9 @@ use sc_core::engine::{OnOff, SequenceError, TargetMode, parse_sequence};
 use sc_core::{ControlCore, ListenerGuard};
 use sc_game::Subscription;
 
+use crate::bus_fleet;
 use crate::busfile::{self, BusFile};
+use crate::fleet::FleetHub;
 use crate::json::{is_integer, to_js_value, to_text};
 use crate::token::Token;
 
@@ -40,7 +43,7 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 const CLOSE_GRACE: Duration = Duration::from_secs(1);
 /// Close codes, as the TS server sends them.
 const POLICY: u16 = 1008;
-const TOO_BIG: u16 = 1009;
+pub(crate) const TOO_BIG: u16 = 1009;
 /// Pushes a slow client may fall behind by before it misses some.
 const PUSH_BUFFER: usize = 1024;
 
@@ -57,6 +60,7 @@ struct Shared {
     pushes: broadcast::Sender<Arc<str>>,
     follow: Mutex<Follow>,
     closing: watch::Receiver<bool>,
+    fleet: Option<Arc<FleetHub>>,
 }
 
 impl Shared {
@@ -100,6 +104,15 @@ pub struct BusServer {
 impl BusServer {
     /// Bind on 127.0.0.1 (any free port), then advertise it in `bus_file`.
     pub async fn start(core: Arc<ControlCore>, bus_file: PathBuf) -> io::Result<Self> {
+        Self::start_with(core, bus_file, None).await
+    }
+
+    /// As [`Self::start`], with the fleet that `fleet.status` readers see.
+    pub async fn start_with(
+        core: Arc<ControlCore>,
+        bus_file: PathBuf,
+        fleet: Option<Arc<FleetHub>>,
+    ) -> io::Result<Self> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let port = listener.local_addr()?.port();
         let token = Token::generate();
@@ -124,6 +137,7 @@ impl BusServer {
             pushes,
             follow: Mutex::default(),
             closing: closing.clone(),
+            fleet,
         });
         let app = Router::new()
             .fallback(upgrade)
@@ -192,7 +206,7 @@ async fn upgrade(
     }
 }
 
-fn close_frame(code: u16, reason: &str) -> Message {
+pub(crate) fn close_frame(code: u16, reason: &str) -> Message {
     Message::Close(Some(CloseFrame {
         code,
         reason: reason.into(),
@@ -221,7 +235,7 @@ fn check_hello(message: Option<&Value>, token: &Token) -> Option<String> {
 }
 
 /// A text or binary message as JSON; binary messages are never valid.
-fn parse(message: &Message) -> Option<Value> {
+pub(crate) fn parse(message: &Message) -> Option<Value> {
     let Message::Text(text) = message else {
         return None;
     };
@@ -231,13 +245,13 @@ fn parse(message: &Message) -> Option<Value> {
 }
 
 /// The read side's next message, or why the connection ends.
-enum Incoming {
+pub(crate) enum Incoming {
     Message(Message),
     TooBig,
     Gone,
 }
 
-fn incoming(frame: Option<Result<Message, axum::Error>>) -> Incoming {
+pub(crate) fn incoming(frame: Option<Result<Message, axum::Error>>) -> Incoming {
     match frame {
         Some(Ok(Message::Text(t))) if t.len() > MAX_MESSAGE_BYTES => Incoming::TooBig,
         Some(Ok(Message::Binary(b))) if b.len() > MAX_MESSAGE_BYTES => Incoming::TooBig,
@@ -257,7 +271,7 @@ fn is_capacity(e: &axum::Error) -> bool {
 
 /// Read until the client answers the close (or gives up), so it sees the close frame rather than
 /// a reset while it is still sending.
-async fn drain(stream: &mut futures_util::stream::SplitStream<WebSocket>) {
+pub(crate) async fn drain(stream: &mut futures_util::stream::SplitStream<WebSocket>) {
     let _ = tokio::time::timeout(CLOSE_GRACE, async {
         while let Some(Ok(message)) = stream.next().await {
             if matches!(message, Message::Close(_)) {
@@ -292,6 +306,17 @@ async fn connection(socket: WebSocket, shared: Arc<Shared>) {
         let _ = sink.send(Message::Text(refused.into())).await;
         let _ = sink.send(close_frame(POLICY, &reason)).await;
         drain(&mut stream).await;
+        return;
+    }
+    if bus_fleet::wants(hello.as_ref()) {
+        let welcome = json!({ "type": "welcome", "sections": [], "link": shared.core.link_status(), "running": null });
+        if sink
+            .send(Message::Text(to_text(&welcome).into()))
+            .await
+            .is_ok()
+        {
+            bus_fleet::serve(sink, stream, shared.fleet.clone(), shared.closing.clone()).await;
+        }
         return;
     }
 

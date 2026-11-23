@@ -3,9 +3,10 @@
 //!
 //! The windowing (tao, wry on WebView2, tray-icon, gilrs) is Windows only and lives in the binary.
 //! Everything it decides with is here, platform free and tested: which display a tab goes on, which
-//! controller and button a bezel mapping means, the page bridge, the app's portal session, the
+//! controller and button a bezel mapping means, the relay bar's pixels, the page bridge, the app's portal session, the
 //! telemetry recorder, the single-instance guard, the app's own settings file and its artwork.
 
+pub mod bar;
 pub mod bezel;
 pub mod brand;
 pub mod bridge;

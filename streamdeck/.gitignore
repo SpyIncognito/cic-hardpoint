@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.sdPlugin/bin/
+*.sdPlugin/logs/
+*.sdPlugin/imgs/plugin/icon*.png
+logs/

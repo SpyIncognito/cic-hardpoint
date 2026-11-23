@@ -3,6 +3,6 @@ pub mod values;
 
 pub use model::{Clock, Freshness, Reading, SectionSnapshot, StateModel, StateModelOptions};
 pub use values::{
-    Derive, MANUFACTURERS, VALUES, ValueDef, ValueKind, ValueView, read_value, ship_manufacturer,
-    ship_model, value_def,
+    Derive, MANUFACTURERS, Maker, VALUES, ValueDef, ValueKind, ValueView, maker_short, read_value,
+    ship_manufacturer, ship_model, ship_name, value_def,
 };

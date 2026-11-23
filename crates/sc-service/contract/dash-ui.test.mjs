@@ -74,6 +74,25 @@ async function startServer(dir, replay, extra = []) {
   return { proc, url: `http://127.0.0.1:${port}`, settings: join(config, 'hardpoint') };
 }
 const stop = (s) => new Promise((r) => { if (!s || s.proc.exitCode !== null) return r(); s.proc.once('exit', r); s.proc.kill('SIGINT'); });
+// The test relay (an example in sc-service: `cargo build -p sc-service --examples`), with made-up
+// members, for the fleet panel.
+const RELAY = process.env.SC_TEST_RELAY_BIN ?? join(ROOT, 'target/debug/examples/fleet_test_relay');
+async function startRelay(extra = []) {
+  const proc = spawn(RELAY, extra, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  const invite = await new Promise((res, rej) => {
+    proc.stdout.on('data', (d) => { out += d; const m = out.match(/invite: (\S+)/); if (m) res(m[1]); });
+    proc.once('exit', (c) => rej(new Error(`relay exited ${c}: ${out}`)));
+    setTimeout(() => rej(new Error(`relay did not start: ${out}`)), 15000);
+  });
+  return { proc, invite };
+}
+/** Joins the test relay's fleet once per service; the service keeps it for later pages. */
+async function joinFleet(page, invite) {
+  await page.waitForFunction(() => typeof fleet !== 'undefined' && fleet);
+  await page.evaluate((inv) => { if (fleet.link.state === 'none') send({ type: 'fleet.join', invite: inv, handle: 'Tester' }); }, invite);
+  await page.waitForFunction(() => fleet.link.state === 'online' && fleet.members.length >= 2, null, { timeout: 15000 });
+}
 
 let browser, dir, rec, recAC;
 const errors = [];
@@ -106,9 +125,9 @@ const unaccepted = (page) => page.evaluate(() => [...document.querySelectorAll('
   .map((el) => el.id || el.outerHTML.slice(0, 80)));
 
 describe('dashboard page (Rust service, synthetic Corsair)', () => {
-  let s1;
-  before(async () => { if (chromium) s1 = await startServer(join(dir, 's1'), rec, ['--fleet-demo', rec, '--fleet-peers', '4']); });
-  after(() => stop(s1));
+  let s1, relay;
+  before(async () => { if (chromium) { relay = await startRelay(['--members', '4']); s1 = await startServer(join(dir, 's1'), rec); } });
+  after(async () => { await stop(s1); await stop(relay); });
 
   it('greys what the Corsair lacks after 10 s, keeps it clickable, and shows why', skip, async () => {
     const page = await open(s1);
@@ -183,6 +202,7 @@ describe('dashboard page (Rust service, synthetic Corsair)', () => {
 
   it('fleet groups: Enter saves the name, Escape restores it; the field is readable', skip, async () => {
     const page = await open(s1);
+    await joinFleet(page, relay.invite);
     await page.waitForFunction(() => fleet && fleet.members.length);
     await page.click('[data-f=add]');
     await page.fill('#fleet-name', 'Wing one');
@@ -216,6 +236,7 @@ describe('dashboard page (Rust service, synthetic Corsair)', () => {
 
   it('an open group list in the fleet detail is never replaced by a push', skip, async () => {
     const page = await open(s1);
+    await joinFleet(page, relay.invite);
     await page.waitForFunction(() => fleet && fleet.members.length);
     await page.click('#fleet .fcard');
     await page.waitForSelector('#fd-group');
@@ -241,6 +262,7 @@ describe('dashboard page (Rust service, synthetic Corsair)', () => {
 
   it('a card click toggles its detail: the same card closes it, another switches; Close stays', skip, async () => {
     const page = await open(s1);
+    await joinFleet(page, relay.invite);
     await page.waitForFunction(() => fleet && fleet.members.length >= 2);
     const state = () => page.evaluate(() => ({
       open: !$('fleet-detail').hidden,
@@ -300,15 +322,16 @@ describe('dashboard page (Rust service, synthetic Corsair)', () => {
 });
 
 describe('a ship change with switching on (Rust service, Arrow then Corsair)', () => {
-  let s2;
+  let s2, relay2;
   before(async () => {
     if (!chromium) return;
     // The dashboards from the first server: the Corsair's, switching on, the generic one shown.
     mkdirSync(join(dir, 's2/config/hardpoint'), { recursive: true });
     copyFileSync(join(dir, 's1/config/hardpoint/dashboards.json'), join(dir, 's2/config/hardpoint/dashboards.json'));
-    s2 = await startServer(join(dir, 's2'), recAC, ['--fleet-demo', rec, '--fleet-peers', '4']);
+    relay2 = await startRelay(['--members', '2']);
+    s2 = await startServer(join(dir, 's2'), recAC);
   });
-  after(() => stop(s2));
+  after(async () => { await stop(s2); await stop(relay2); });
 
   it('shows the Drake dashboard 2 s after the Corsair is recognised, and a single-tab window follows by name', skip, async () => {
     const page = await open(s2);
@@ -323,6 +346,7 @@ describe('a ship change with switching on (Rust service, Arrow then Corsair)', (
     await page.waitForTimeout(400);
     await shot(page, 'drake-ship-dashboard-auto-selected-1920x1080.png');
     // Drake: the fleet group field and the theme editor fields.
+    await joinFleet(page, relay2.invite);
     await page.click('[data-f=add]');
     await page.fill('#fleet-name', 'Escort');
     await shot(page, 'fleet-group-name-drake-1920x1080.png');

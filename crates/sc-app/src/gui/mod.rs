@@ -4,6 +4,7 @@
 //! display-info and rfd.
 
 mod pads;
+mod relay;
 mod screens;
 mod splash;
 
@@ -36,8 +37,10 @@ use sc_app::recorder::{self, DEFAULT_CAP, Recorder, StopReason, Summary};
 use sc_app::settings::AppSettings;
 use sc_service::Service;
 use sc_service::paths::{self, Env};
+use sc_service::relay::{Mode, Status as RelayStatus};
 
 use crate::Args;
+use relay::BarAction;
 use splash::Splash;
 
 const TITLE: &str = DISPLAY_NAME;
@@ -68,6 +71,8 @@ pub enum UserEvent {
     MainReady,
     /// The splash's 2 s and 6 s marks.
     SplashTick,
+    /// The relay's status changed.
+    Relay(Box<RelayStatus>),
 }
 
 enum Recording {
@@ -151,7 +156,9 @@ pub fn run(args: Args) -> ExitCode {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let mut context = WebContext::new(Some(webview_dir(&settings)));
-    let splash = if args.splash && AppSettings::load(&settings).splash {
+    // A game PC that was relaying starts straight into the bar: no splash, no dashboard webview.
+    let relaying = sc_service::relay::saved(Some(&settings)).0 == Mode::Relay;
+    let splash = if args.splash && !relaying && AppSettings::load(&settings).splash {
         Splash::open(&event_loop, &mut context, &proxy)
             .inspect_err(|e| tracing::warn!("no splash: {e}"))
             .ok()
@@ -182,6 +189,20 @@ pub fn run(args: Args) -> ExitCode {
         let proxy = proxy.clone();
         guard.serve(move || {
             let _ = proxy.send_event(UserEvent::Show);
+        });
+    }
+    {
+        let proxy = proxy.clone();
+        let mut status = service.relay().subscribe();
+        runtime.spawn(async move {
+            loop {
+                let now = status.borrow_and_update().clone();
+                if proxy.send_event(UserEvent::Relay(Box::new(now))).is_err()
+                    || status.changed().await.is_err()
+                {
+                    return;
+                }
+            }
         });
     }
 
@@ -240,8 +261,10 @@ pub fn run(args: Args) -> ExitCode {
         restored: false,
         shown: DashState::default(),
         menus,
+        bar: None,
+        relay_status: None,
     };
-    if let Err(e) = app.open_main(&event_loop) {
+    if let Err(e) = app.open_main(&event_loop, !relaying) {
         app.splash = None;
         return fail(&format!(
             "The dashboard window could not open: {e}\n\nIs the WebView2 runtime installed?"
@@ -256,6 +279,16 @@ pub fn run(args: Args) -> ExitCode {
         *flow = ControlFlow::Wait;
         let quit = match event {
             Event::UserEvent(e) => app.on_user(e, target),
+            Event::WindowEvent {
+                window_id, event, ..
+            } if app.is_bar(window_id) => {
+                app.on_bar_event(&event);
+                false
+            }
+            Event::RedrawRequested(window_id) if app.is_bar(window_id) => {
+                app.draw_bar();
+                false
+            }
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
@@ -290,6 +323,10 @@ struct Menus {
     /// Its text says whether a click starts or stops.
     record: MenuItem,
     recordings: MenuId,
+    /// Enabled in relay mode only; the first one's text says whether it stops the relay or connects.
+    relay_link: MenuItem,
+    relay_settings: MenuItem,
+    relay_exit: MenuItem,
     quit: MenuId,
 }
 
@@ -298,6 +335,9 @@ fn build_tray(proxy: &EventLoopProxy<UserEvent>) -> Result<(TrayIcon, Menus), St
     let restore = MenuItem::new("Restore detached tabs", true, None);
     let record = MenuItem::new(RECORD, true, None);
     let recordings = MenuItem::new("Open recordings folder", true, None);
+    let relay_link = MenuItem::new("Relay: stop relay", false, None);
+    let relay_settings = MenuItem::new("Relay settings", false, None);
+    let relay_exit = MenuItem::new("Exit relay mode", false, None);
     let quit = MenuItem::new("Quit", true, None);
     let menu = Menu::new();
     menu.append_items(&[
@@ -307,6 +347,10 @@ fn build_tray(proxy: &EventLoopProxy<UserEvent>) -> Result<(TrayIcon, Menus), St
         &record,
         &recordings,
         &PredefinedMenuItem::separator(),
+        &relay_link,
+        &relay_settings,
+        &relay_exit,
+        &PredefinedMenuItem::separator(),
         &quit,
     ])
     .map_err(|e| e.to_string())?;
@@ -315,6 +359,9 @@ fn build_tray(proxy: &EventLoopProxy<UserEvent>) -> Result<(TrayIcon, Menus), St
         restore: restore.id().clone(),
         record,
         recordings: recordings.id().clone(),
+        relay_link,
+        relay_settings,
+        relay_exit,
         quit: quit.id().clone(),
     };
     let Rgba {
@@ -404,6 +451,13 @@ struct View {
     window: Window,
 }
 
+/// The dashboard window. Its webview exists only while the window is shown, so the browser
+/// processes behind it exit while the app sits in the tray.
+struct Main {
+    webview: Option<WebView>,
+    window: Window,
+}
+
 struct App {
     port: u16,
     settings: PathBuf,
@@ -417,7 +471,7 @@ struct App {
     state: Shared,
     proxy: EventLoopProxy<UserEvent>,
     context: WebContext,
-    main: Option<View>,
+    main: Option<Main>,
     /// Open at launch until it is done; the main window is shown when it closes.
     splash: Option<Splash>,
     kiosks: HashMap<String, View>,
@@ -429,6 +483,9 @@ struct App {
     /// The dashboard as last acted on, to follow detached windows when it changes.
     shown: DashState,
     menus: Option<Menus>,
+    /// The relay bar, while the game PC is in relay mode.
+    bar: Option<relay::Bar>,
+    relay_status: Option<RelayStatus>,
 }
 
 impl App {
@@ -474,42 +531,72 @@ impl App {
             .build(window)
     }
 
-    fn open_main(&mut self, target: &EventLoopWindowTarget<UserEvent>) -> Result<(), String> {
+    /// The dashboard window; hidden and without its webview until shown when `shown` is false.
+    fn open_main(
+        &mut self,
+        target: &EventLoopWindowTarget<UserEvent>,
+        shown: bool,
+    ) -> Result<(), String> {
         let window = WindowBuilder::new()
             .with_title(TITLE)
             .with_inner_size(LogicalSize::new(1280.0, 860.0))
             .with_window_icon(window_icon())
             .with_taskbar_icon(taskbar_icon())
             // Behind the splash: shown when it closes.
-            .with_visible(self.splash.is_none())
+            .with_visible(shown && self.splash.is_none())
             .build(target)
             .map_err(|e| e.to_string())?;
-        let url = format!("{}/dash", bridge::origin(self.port));
-        let webview = self
-            .webview(&window, &url, Sender::Main, true)
-            .map_err(|e| e.to_string())?;
-        self.main = Some(View { webview, window });
+        let webview = if shown {
+            Some(self.main_webview(&window).map_err(|e| e.to_string())?)
+        } else {
+            None
+        };
+        self.main = Some(Main { webview, window });
         Ok(())
     }
 
-    fn show_main(&self) {
-        if let Some(v) = &self.main {
-            v.window.set_visible(true);
-            v.window.set_minimized(false);
-            v.window.set_focus();
+    /// In relay mode the dashboard opens at its Relay settings.
+    fn main_webview(&mut self, window: &Window) -> wry::Result<WebView> {
+        let at = if self.in_relay_mode() { "#relay" } else { "" };
+        let url = format!("{}/dash{at}", bridge::origin(self.port));
+        self.webview(window, &url, Sender::Main, true)
+    }
+
+    fn show_main(&mut self) {
+        let Some(mut main) = self.main.take() else {
+            return;
+        };
+        if main.webview.is_none() {
+            match self.main_webview(&main.window) {
+                Ok(webview) => main.webview = Some(webview),
+                Err(e) => tracing::error!("the dashboard could not load again: {e}"),
+            }
+        }
+        main.window.set_visible(true);
+        main.window.set_minimized(false);
+        main.window.set_focus();
+        self.main = Some(main);
+    }
+
+    /// Closed to the tray. The app's own service session (bezel actions) lives in `client`,
+    /// not in this webview, so it keeps running.
+    fn hide_main(&mut self) {
+        if let Some(main) = &mut self.main {
+            main.window.set_visible(false);
+            main.webview = None;
         }
     }
 
-    fn view(&self, from: &Sender) -> Option<&View> {
+    fn page(&self, from: &Sender) -> Option<&WebView> {
         match from {
-            Sender::Main => self.main.as_ref(),
-            Sender::Tab(t) => self.kiosks.get(t),
+            Sender::Main => self.main.as_ref()?.webview.as_ref(),
+            Sender::Tab(t) => self.kiosks.get(t).map(|v| &v.webview),
         }
     }
 
     fn eval(&self, from: &Sender, script: &str) {
-        if let Some(v) = self.view(from)
-            && let Err(e) = v.webview.evaluate_script(script)
+        if let Some(webview) = self.page(from)
+            && let Err(e) = webview.evaluate_script(script)
         {
             tracing::warn!("cannot reach the page: {e}");
         }
@@ -616,10 +703,16 @@ impl App {
                 .set_text(if on { STOP_RECORDING } else { RECORD });
         }
         if let Some(tray) = &self.tray {
-            let tip = if on {
-                format!("{TITLE}: REC")
-            } else {
-                TITLE.to_owned()
+            let relaying = self
+                .relay_status
+                .as_ref()
+                .filter(|s| s.mode == Mode::Relay)
+                .map(RelayStatus::title);
+            let tip = match (relaying, on) {
+                (Some(title), true) => format!("{title}, REC"),
+                (Some(title), false) => title,
+                (None, true) => format!("{TITLE}: REC"),
+                (None, false) => TITLE.to_owned(),
             };
             if let Err(e) = tray.set_tooltip(Some(tip)) {
                 tracing::warn!("tray tooltip: {e}");
@@ -659,9 +752,7 @@ impl App {
     fn on_close(&mut self, id: WindowId) {
         if self.main.as_ref().is_some_and(|v| v.window.id() == id) {
             // The app keeps running in the tray; Quit is there.
-            if let Some(v) = &self.main {
-                v.window.set_visible(false);
-            }
+            self.hide_main();
             return;
         }
         let tab = self
@@ -708,6 +799,7 @@ impl App {
                 self.close_splash_when_done();
             }
             UserEvent::SplashTick => self.close_splash_when_done(),
+            UserEvent::Relay(status) => self.on_relay(*status, target),
             UserEvent::RecordingStarted(started) => self.on_recording_started(started),
             UserEvent::RecordingEnded(summary) => self.on_recording_ended(&summary),
             UserEvent::Menu(id) => {
@@ -726,6 +818,12 @@ impl App {
                     }
                 } else if id == menus.recordings {
                     self.open_recordings();
+                } else if id == *menus.relay_link.id() {
+                    self.bar_action(BarAction::Link);
+                } else if id == *menus.relay_settings.id() {
+                    self.bar_action(BarAction::Settings);
+                } else if id == *menus.relay_exit.id() {
+                    self.bar_action(BarAction::Exit);
                 } else if id == menus.quit {
                     return true;
                 }
@@ -742,6 +840,10 @@ impl App {
     }
 
     fn restore(&mut self, target: &EventLoopWindowTarget<UserEvent>) {
+        // Relay mode renders nothing; the tabs come back when it ends.
+        if self.in_relay_mode() {
+            return;
+        }
         let result = bridge::restore_all(&mut Ctx { app: self, target });
         let left: Vec<String> = result["tabs"]
             .as_array()
@@ -924,11 +1026,7 @@ impl Host for Ctx<'_> {
 
     fn close_window(&mut self, who: &Sender) {
         match who {
-            Sender::Main => {
-                if let Some(v) = &self.app.main {
-                    v.window.set_visible(false);
-                }
-            }
+            Sender::Main => self.app.hide_main(),
             Sender::Tab(tab) => self.app.close_kiosk(tab),
         }
     }
@@ -944,5 +1042,14 @@ impl Host for Ctx<'_> {
             self.app.mapping.remove(tab);
         }
         self.app.tell_engine();
+    }
+    fn open_browser(&mut self, url: &str) -> Result<(), String> {
+        // By full path, so no explorer.exe beside the app or on PATH is run instead.
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+        std::process::Command::new(PathBuf::from(root).join("explorer.exe"))
+            .arg(url)
+            .spawn()
+            .map(drop)
+            .map_err(|e| format!("Could not open the browser: {e}"))
     }
 }

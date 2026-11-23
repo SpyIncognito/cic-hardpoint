@@ -3,8 +3,9 @@
 //! as the deck. The page never talks to the game itself. Messages from one page run in order,
 //! except that `run` does not hold up the next one.
 //!
-//! Every page message goes through [`Session::run`]: the place where per-person permissions and
-//! an audit log would go when the portal grows to more than one user.
+//! Every page message goes through [`Session::run`], which applies the session's [`Policy`]: a
+//! page this machine served, or a companion's page carried over the relay link. A session runs
+//! over any stream of text messages ([`serve_stream`]); [`serve`] is the local page's WebSocket.
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -14,7 +15,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::stream::SplitStream;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt, future};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc, watch};
@@ -26,15 +27,17 @@ use sc_core::engine::{
 };
 use sc_core::js;
 
+use super::policy::Policy;
 use super::status::build_status;
 use super::{catalog, known};
 use crate::dashboard::{
-    COLUMNS, ImportSummary, KindTable, LEVER_SIZE, LookOnlyFor, MAX_BEZEL_BUTTONS, MAX_BOARDS,
-    MAX_BUTTON_INDEX, MAX_DISPLAY_LABEL, MAX_GAMEPAD_ID, MAX_LABEL, MAX_ROWS, MAX_TABS,
-    MAX_WIDGETS, MIN_ROWS, build_values_with, check_ship, lamp_values, read_dashboard,
+    BoardInfo, CELLS, COLUMNS, DEFAULT_CELL, ImportSummary, KindTable, LEVER_SIZE, LookOnlyFor,
+    MAX_BEZEL_BUTTONS, MAX_BOARDS, MAX_BUTTON_INDEX, MAX_DISPLAY_LABEL, MAX_GAMEPAD_ID, MAX_LABEL,
+    MAX_ROWS, MAX_TABS, MAX_WIDGETS, MIN_ROWS, build_values_with, check_ship, lamp_values,
+    read_dashboard,
 };
-use crate::fleet::ViewChange;
 use crate::json::{js_string, to_js_value, to_pretty_text, to_text};
+use crate::relay::Mode;
 use crate::service::App;
 use crate::ship::ShipView;
 use crate::ship::support::{FIELDS, SupportEntry};
@@ -115,6 +118,7 @@ struct Limits {
 pub struct Session {
     app: Arc<App>,
     client: String,
+    policy: Policy,
     out: mpsc::UnboundedSender<String>,
     /// A page that shows a dashboard asks for it once (`dash.get`); only then do values and
     /// layouts follow.
@@ -131,7 +135,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// The first message must be the hello with the token, within [`HELLO_TIMEOUT`]; the client name
 /// it gives, or `None` to close.
-async fn hello(stream: &mut SplitStream<WebSocket>, token: &Token) -> Option<String> {
+pub(crate) async fn hello(stream: &mut SplitStream<WebSocket>, token: &Token) -> Option<String> {
     let first = async {
         loop {
             match stream.next().await?.ok()? {
@@ -158,7 +162,22 @@ async fn hello(stream: &mut SplitStream<WebSocket>, token: &Token) -> Option<Str
     )
 }
 
-/// Serve one page's WebSocket until it closes or the service stops.
+/// The page's text messages until it closes.
+pub(crate) fn texts(stream: SplitStream<WebSocket>) -> impl Stream<Item = String> + Unpin + Send {
+    stream
+        .take_while(|frame| {
+            future::ready(matches!(frame, Ok(m) if !matches!(m, Message::Close(_))))
+        })
+        .filter_map(|frame| {
+            future::ready(match frame {
+                Ok(Message::Text(t)) => Some(t.to_string()),
+                Ok(Message::Binary(b)) => String::from_utf8(b.to_vec()).ok(),
+                _ => None,
+            })
+        })
+}
+
+/// Serve one local page's WebSocket until it closes or the service stops.
 pub async fn serve(socket: WebSocket, app: Arc<App>) {
     let (mut sink, mut stream) = socket.split();
     let Some(client) = hello(&mut stream, &app.token).await else {
@@ -173,14 +192,28 @@ pub async fn serve(socket: WebSocket, app: Arc<App>) {
             }
         }
     });
+    serve_stream(app, client, Policy::Local, texts(stream), out).await;
+    writer.abort();
+}
+
+/// Serve one page over any stream of text messages, sending to `out`, until the stream ends or
+/// the service stops. The page is already known (by token here, or by the relay link).
+pub async fn serve_stream(
+    app: Arc<App>,
+    client: String,
+    policy: Policy,
+    mut incoming: impl Stream<Item = String> + Unpin + Send,
+    out: mpsc::UnboundedSender<String>,
+) {
     let session = Arc::new(Session {
         app: Arc::clone(&app),
         client,
+        policy,
         out,
         dash_page: AtomicBool::new(false),
         limits: Mutex::default(),
         pushes: Mutex::default(),
-        fleet_viewer: app.fleet.as_ref().map_or(0, |hub| hub.viewer()),
+        fleet_viewer: app.fleet.viewer(),
     });
 
     let _follow = app.core.follow();
@@ -196,39 +229,47 @@ pub async fn serve(socket: WebSocket, app: Arc<App>) {
             app.dashboards.subscribe(),
         )),
         tokio::spawn(push_themes(Arc::clone(&session), app.themes.subscribe())),
-    ];
-    if let Some(hub) = &app.fleet {
-        pushers.push(tokio::spawn(push_fleet(
+        tokio::spawn(push_time(Arc::clone(&session), app.time.subscribe())),
+        tokio::spawn(push_ship_names(
             Arc::clone(&session),
-            hub.subscribe(),
-            hub.view().subscribe(),
-        )));
+            app.ship_names.subscribe(),
+        )),
+    ];
+    pushers.push(tokio::spawn(push_fleet_layouts(
+        Arc::clone(&session),
+        app.fleet_layouts.subscribe(),
+    )));
+    pushers.push(tokio::spawn(push_fleet(
+        Arc::clone(&session),
+        app.fleet.subscribe(),
+        app.fleet.view().subscribe(),
+    )));
+    let local = !session.policy.is_companion();
+    if local {
+        pushers.push(tokio::spawn(push_relay(Arc::clone(&session))));
     }
     session.send_catalog();
     session.push_status(true);
 
     let mut closing = app.closing.clone();
+    let mut relay = app.relay.subscribe();
     loop {
-        let frame = tokio::select! {
-            frame = stream.next() => frame,
+        let text = tokio::select! {
+            text = incoming.next() => text,
             _ = closing.changed() => break,
+            // A page here ends when this machine becomes a companion; it comes back bridged.
+            changed = relay.changed(), if local => {
+                if changed.is_err() || relay.borrow().mode == Mode::Companion {
+                    break;
+                }
+                continue;
+            }
         };
-        let text = match frame {
-            Some(Ok(Message::Text(t))) => t.to_string(),
-            Some(Ok(Message::Binary(b))) => match String::from_utf8(b.to_vec()) {
-                Ok(text) => text,
-                Err(_) => continue,
-            },
-            Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-            Some(Ok(Message::Close(_)) | Err(_)) | None => break,
-        };
+        let Some(text) = text else { break };
         session.handle(&text).await;
     }
     pushers.iter().for_each(JoinHandle::abort);
-    writer.abort();
-    if let Some(hub) = &app.fleet {
-        hub.set_detail(session.fleet_viewer, None);
-    }
+    app.fleet.set_detail(session.fleet_viewer, None);
 }
 
 /// The status and values, throttled, after every core change.
@@ -271,6 +312,25 @@ async fn push_themes(session: Arc<Session>, mut themes: watch::Receiver<u64>) {
     }
 }
 
+/// The time settings, to every open dashboard page, whenever they change.
+async fn push_time(session: Arc<Session>, mut time: watch::Receiver<u64>) {
+    while time.changed().await.is_ok() {
+        if session.is_dash_page() {
+            session.send(&session.app.time.push());
+        }
+    }
+}
+
+/// The ship names, and the picker that shows them, to every open dashboard page when one changes.
+async fn push_ship_names(session: Arc<Session>, mut names: watch::Receiver<u64>) {
+    while names.changed().await.is_ok() {
+        if session.is_dash_page() {
+            session.send(&session.app.ship_names.push());
+            session.push_dashboard();
+        }
+    }
+}
+
 /// The fleet panel, to every open dashboard page, when a card arrives or the viewer's groups
 /// change, and at least every second so ages and OFFLINE stay current.
 async fn push_fleet(
@@ -290,6 +350,26 @@ async fn push_fleet(
     }
 }
 
+/// A note to every open dashboard page that a Fleet tab layout was saved, so a page showing the
+/// Fleet tab (here or on a companion) asks for it again.
+async fn push_fleet_layouts(session: Arc<Session>, mut layouts: watch::Receiver<u64>) {
+    while layouts.changed().await.is_ok() {
+        if session.is_dash_page() {
+            session.send(&json!({ "type": "fleetLayout" }));
+        }
+    }
+}
+
+/// The relay status, to every local dashboard page, whenever it changes.
+async fn push_relay(session: Arc<Session>) {
+    let mut status = session.app.relay.subscribe();
+    while status.changed().await.is_ok() {
+        if session.is_dash_page() {
+            session.push_relay();
+        }
+    }
+}
+
 /// `msg.<name>` as a string, or the error the TS would have thrown on.
 fn string_field<'a>(msg: &'a Value, name: &str) -> Result<&'a str, String> {
     msg.get(name)
@@ -297,8 +377,29 @@ fn string_field<'a>(msg: &'a Value, name: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("{name} must be a string"))
 }
 
+/// What the join screen shows before anything is sent: where the invite points, the server's
+/// key fingerprint, whether it is a CIC relay, and a host's name as the invite labels it.
+fn inspect_invite(text: &str) -> Value {
+    match text.parse::<fleet_proto::Invite>() {
+        Err(e) => json!({ "problems": [e.to_string()] }),
+        Ok(i) => json!({ "problems": [], "invite": {
+            "address": if i.host.contains(':') { format!("[{}]:{}", i.host, i.port) } else { format!("{}:{}", i.host, i.port) },
+            "fingerprint": i.key.fingerprint(),
+            "key": i.key.to_string(),
+            "hosted": i.connect.is_some(),
+            "hostName": crate::fleet::host::host_name_of(text),
+        } }),
+    }
+}
+
 fn io_error(e: std::io::Error) -> String {
     e.to_string()
+}
+
+pub(crate) fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
 impl Session {
@@ -322,14 +423,15 @@ impl Session {
             return;
         };
         let detail = log_detail(&msg);
-        let is_run = kind == "run";
+        // A long sequence, or pairing that waits for the companion's user, must not block other
+        // messages from this page (an abort, say).
+        let is_run = kind == "run" || kind == "relay.pair";
         let work = self.run(kind.clone(), msg);
         let session = Arc::clone(self);
         let answer = async move {
             let outcome = work.await;
             session.respond(&kind, id, &detail, outcome);
         };
-        // A long sequence must not block other messages from this page (an abort, say).
         if is_run {
             tokio::spawn(answer);
         } else {
@@ -344,9 +446,13 @@ impl Session {
         kind: String,
         msg: Value,
     ) -> impl Future<Output = Result<Value, String>> + Send + 'static {
-        let capped = ACTION_TYPES.contains(&kind.as_str()) && !self.admit();
+        let refused = self.policy.refusal(&kind, &msg, now_ms());
+        let capped = refused.is_none() && ACTION_TYPES.contains(&kind.as_str()) && !self.admit();
         let session = Arc::clone(self);
         async move {
+            if let Some(refused) = refused {
+                return Ok(refused);
+            }
             if capped {
                 let refused = ActionResult::fail(
                     FailStatus::Unknown,
@@ -369,7 +475,7 @@ impl Session {
         {
             limits.recent.pop_front();
         }
-        if limits.recent.len() >= MAX_ACTIONS_PER_S {
+        if limits.recent.len() >= MAX_ACTIONS_PER_S || !self.policy.admit() {
             return false;
         }
         limits.recent.push_back(now);
@@ -450,7 +556,14 @@ impl Session {
                         .map_err(io_error)?,
                 )
             }
-            "dash.addTab" => to_js_value(&dashboards.add_tab(msg.get("name")).map_err(io_error)?),
+            "dash.addTab" => {
+                let known = known(core, dashboards, themes).await;
+                to_js_value(
+                    &dashboards
+                        .add_tab_in(msg.get("name"), msg.get("theme"), &known)
+                        .map_err(io_error)?,
+                )
+            }
             "dash.removeTab" => to_js_value(&dashboards.remove_tab(&tab_id()).map_err(io_error)?),
             "dash.duplicateTab" => {
                 to_js_value(&dashboards.duplicate_tab(&tab_id()).map_err(io_error)?)
@@ -492,6 +605,7 @@ impl Session {
                         .map_err(io_error)?,
                 )
             }
+            "dash.setCell" => to_js_value(&dashboards.set_cell(msg.get("cell")).map_err(io_error)?),
             "theme.list" => themes.model(),
             "theme.save" => to_js_value(
                 &themes
@@ -511,7 +625,11 @@ impl Session {
                 }
                 to_js_value(&change)
             }
-            "dash.list" => to_js_value(&dashboards.list()),
+            "dash.list" => {
+                let mut list = dashboards.list();
+                self.named(&mut list.dashboards);
+                to_js_value(&list)
+            }
             "dash.select" => {
                 let change = dashboards.select(&board_id(), true).map_err(io_error)?;
                 if change.problems.is_empty() {
@@ -536,8 +654,14 @@ impl Session {
                 };
                 let known = known(core, dashboards, themes).await;
                 let from = msg.get("from").and_then(Value::as_str);
+                let users_name = ship
+                    .class_name
+                    .as_deref()
+                    .and_then(|c| self.app.ship_names.name_of(c))
+                    .map(Value::String);
+                let name = msg.get("name").or(users_name.as_ref());
                 let change = dashboards
-                    .create_for_ship(ship, from, msg.get("name"), &known)
+                    .create_for_ship(ship, from, name, &known)
                     .map_err(io_error)?;
                 self.app.ships.picked();
                 to_js_value(&change)
@@ -561,20 +685,62 @@ impl Session {
                 let removed = self.app.ships.reset(class_name).map_err(io_error)?;
                 json!({ "problems": [], "removed": removed })
             }
-            kind if kind.starts_with("fleet.") => self.fleet(kind, msg)?,
+            "time.set" => {
+                let problems = self.app.time.set(msg.get("time").unwrap_or(&Value::Null));
+                json!({ "problems": problems.map_err(io_error)?, "time": self.app.time.get() })
+            }
+            "shipNames.set" => {
+                let problems = self.app.ship_names.set(msg).map_err(io_error)?;
+                json!({ "problems": problems, "names": self.app.ship_names.get() })
+            }
+            kind if kind.starts_with("fleet.") => self.fleet(kind, msg).await?,
+            kind if kind.starts_with("relay.") => self.app.relay.page_message(kind, msg).await?,
             // `catalog` is answered by the catalog push after the result.
             _ => Value::Null,
         })
     }
 
-    /// The viewer's fleet panel: groups, card fields, the admiral view and the detail view.
-    fn fleet(&self, kind: &str, msg: &Value) -> Result<Value, String> {
-        let Some(hub) = &self.app.fleet else {
-            return Ok(to_js_value(&ViewChange {
-                problems: vec!["There is no fleet".to_owned()],
-                group: None,
-            }));
-        };
+    /// The fleet panel: joining and leaving, the event choice, the send consent and its preview,
+    /// and the viewer's groups, card fields, admiral view and detail view. Structure changes are
+    /// the CIC portal's, so `fleet.change` and `fleet.moves` get the unknown-message error.
+    async fn fleet(&self, kind: &str, msg: &Value) -> Result<Value, String> {
+        let hub = &self.app.fleet;
+        let client = &self.app.fleet_client;
+        let done = |r: Result<(), String>| json!({ "problems": r.err().map_or_else(Vec::new, |p| vec![p]) });
+        match kind {
+            "fleet.join" => {
+                let invite = js_string(msg.get("invite"));
+                let handle = js_string(msg.get("handle"));
+                return Ok(done(client.join(&invite, &handle)));
+            }
+            "fleet.connect" => return Ok(done(client.connect(&js_string(msg.get("key"))))),
+            "fleet.leave" => return Ok(done(client.leave(&js_string(msg.get("key"))).await)),
+            "fleet.consent" => {
+                let problems = client
+                    .set_consent(msg.get("fields"))
+                    .err()
+                    .unwrap_or_default();
+                return Ok(json!({ "problems": problems }));
+            }
+            "fleet.preview" => return Ok(json!({ "card": client.preview() })),
+            "fleet.choose" => return Ok(done(client.choose(&js_string(msg.get("event"))))),
+            "fleet.inspect" => return Ok(inspect_invite(&js_string(msg.get("invite")))),
+            kind if kind.starts_with("fleet.host.") => return Ok(self.fleet_host(kind, msg).await),
+            "fleet.layout.get" => {
+                let key = js_string(msg.get("key"));
+                return Ok(json!({ "key": key, "layout": self.app.fleet_layouts.get(&key) }));
+            }
+            "fleet.layout.save" => {
+                let key = js_string(msg.get("key"));
+                let change = self
+                    .app
+                    .fleet_layouts
+                    .save(&key, msg.get("layout"), now_ms())
+                    .map_err(io_error)?;
+                return Ok(to_js_value(&change));
+            }
+            _ => {}
+        }
         let view = hub.view();
         let group = || js_string(msg.get("group"));
         let change = match kind {
@@ -597,6 +763,46 @@ impl Session {
             _ => return Err(format!("unknown fleet message {kind}")),
         };
         Ok(to_js_value(&change.map_err(io_error)?))
+    }
+
+    /// Peer-to-peer hosting: start and stop, the public address, a new code, Kick (bans and
+    /// replaces the code), Remove, and lifting a ban.
+    async fn fleet_host(&self, kind: &str, msg: &Value) -> Value {
+        let host = &self.app.fleet_host;
+        let client = &self.app.fleet_client;
+        let done = |r: Result<(), String>| json!({ "problems": r.err().map_or_else(Vec::new, |p| vec![p]) });
+        let field = |name: &str| js_string(msg.get(name));
+        match kind {
+            "fleet.host.start" => {
+                let port = match msg.get("port") {
+                    None | Some(Value::Null) => Ok(host.setup().0),
+                    Some(v) => v
+                        .as_u64()
+                        .and_then(|p| u16::try_from(p).ok())
+                        .filter(|p| *p >= 1024)
+                        .ok_or_else(|| "The port must be 1024 to 65535".to_owned()),
+                };
+                let started = match port {
+                    Ok(port) => {
+                        crate::fleet::host::start_hosting(host, client, port, &field("handle"))
+                            .await
+                            .map(|_| ())
+                    }
+                    Err(e) => Err(e),
+                };
+                done(started)
+            }
+            "fleet.host.stop" => {
+                crate::fleet::host::stop_hosting(host, client).await;
+                done(Ok(()))
+            }
+            "fleet.host.address" => done(host.set_public_address(&field("address"))),
+            "fleet.host.rotate" => done(host.rotate().map(|_| ())),
+            "fleet.host.kick" => done(host.kick(&field("member"))),
+            "fleet.host.remove" => done(host.remove(&field("member"))),
+            "fleet.host.lift" => done(host.lift(&field("key"))),
+            _ => done(Err(format!("unknown fleet message {kind}"))),
+        }
     }
 
     async fn press(&self, action: &str, confirmed: bool) -> ActionResult {
@@ -665,7 +871,15 @@ impl Session {
             }
         };
         let refused = result.get("ok") == Some(&Value::Bool(false));
-        let quiet = ["catalog", "dash.get", "theme.list", "fleet.detail"].contains(&kind);
+        let quiet = [
+            "catalog",
+            "dash.get",
+            "theme.list",
+            "fleet.detail",
+            "fleet.inspect",
+            "relay.status",
+        ]
+        .contains(&kind);
         if !quiet && !kind.starts_with("hold.") {
             tracing::info!(
                 "[portal {}] {kind} {detail}: {}",
@@ -677,7 +891,33 @@ impl Session {
         if kind.starts_with("seq.") || kind == "catalog" {
             self.send_catalog();
         }
+        if self.policy.is_companion()
+            && [
+                "fleet.join",
+                "fleet.connect",
+                "fleet.leave",
+                "fleet.consent",
+            ]
+            .contains(&kind)
+            && result
+                .get("problems")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+        {
+            let what = if kind == "fleet.consent" {
+                "fleet sharing"
+            } else {
+                "fleet"
+            };
+            let from = self.client.split('/').next().unwrap_or("the companion");
+            self.app.relay.note(format!("{what} changed on {from}"));
+        }
         if kind == "dash.get" {
+            if !self.policy.is_companion() {
+                self.push_relay();
+            }
+            self.send(&self.app.time.push());
+            self.send(&self.app.ship_names.push());
             self.push_themes();
             self.push_dashboard();
             self.push_fleet(true);
@@ -700,12 +940,26 @@ impl Session {
             && (kind.starts_with("dash.")
                 || kind.starts_with("support.")
                 || kind.starts_with("theme.")
-                || kind.starts_with("fleet."))
+                || kind.starts_with("time.")
+                || kind.starts_with("shipNames.")
+                || kind.starts_with("fleet.")
+                || kind.starts_with("relay."))
             && !problems.is_empty()
         {
             let text: Vec<String> = problems.iter().map(|p| js_string(Some(p))).collect();
             self.notice(&text.join(" \u{b7} "));
         }
+    }
+
+    fn push_relay(&self) {
+        let mut push = json!({ "type": "relay" });
+        if let (Some(push), Ok(Value::Object(status))) = (
+            push.as_object_mut(),
+            serde_json::to_value(self.app.relay.status()),
+        ) {
+            push.extend(status);
+        }
+        self.send(&push);
     }
 
     fn notice(&self, text: &str) {
@@ -734,10 +988,21 @@ impl Session {
         self.send(&push);
     }
 
+    /// The picker's ship names with the user's own in place of the derived ones.
+    fn named(&self, boards: &mut [BoardInfo]) {
+        for b in boards {
+            let users = b.ship.as_ref().and_then(|s| s.class_name.as_deref());
+            if let Some(name) = users.and_then(|c| self.app.ship_names.name_of(c)) {
+                b.ship_name = Some(name);
+            }
+        }
+    }
+
     fn push_dashboard(&self) {
         let store = &self.app.dashboards;
         let board = store.active_board();
-        let list = store.list();
+        let mut list = store.list();
+        self.named(&mut list.dashboards);
         let mut push = json!({
             "type": "dashboard",
             "dashboard": to_js_value(&board.dashboard()),
@@ -755,7 +1020,7 @@ impl Session {
                 "tabs": MAX_TABS, "widgets": MAX_WIDGETS, "label": MAX_LABEL,
                 "displayLabel": MAX_DISPLAY_LABEL, "gamepadId": MAX_GAMEPAD_ID,
                 "bezelButtons": MAX_BEZEL_BUTTONS, "buttonIndex": MAX_BUTTON_INDEX,
-                "dashboards": MAX_BOARDS,
+                "dashboards": MAX_BOARDS, "cells": CELLS, "defaultCell": DEFAULT_CELL,
             },
             // The value, toggle and widget ids that grey when the ship lacks them.
             "greyable": FIELDS.iter().flat_map(|f| f.greys.iter()).collect::<Vec<_>>(),
@@ -830,7 +1095,7 @@ impl Session {
 
     /// The fleet panel's model, to a dashboard page, when the service has a fleet.
     fn push_fleet(&self, now: bool) -> Option<Duration> {
-        let hub = self.app.fleet.as_ref()?;
+        let hub = &self.app.fleet;
         if !self.is_dash_page() {
             return None;
         }

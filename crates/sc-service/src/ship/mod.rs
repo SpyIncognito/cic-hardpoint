@@ -18,7 +18,7 @@ use tokio::time::Instant;
 use sc_core::ControlCore;
 use sc_core::engine::ProgressStatus;
 use sc_core::state::StateModel;
-use sc_core::state::values::{ship_manufacturer, ship_model};
+use sc_core::state::values::{ship_manufacturer, ship_model, ship_name};
 use sc_game::LinkStatus;
 
 use crate::dashboard::{DashboardStore, GENERIC_ID, ShipRef};
@@ -34,7 +34,12 @@ pub struct ShipView {
     pub manufacturer: String,
     pub model: String,
     pub class_name: String,
-    /// `<manufacturer> / <model>`, e.g. "Drake Interplanetary / Corsair".
+    /// What people see, e.g. "Drake Corsair", or the name the user gave the ship.
+    pub name: String,
+    /// The name as derived from the stream, before the user's own.
+    pub derived_name: String,
+    /// `<manufacturer> / <model>`, e.g. "Drake Interplanetary / Corsair". Dashboards match on
+    /// this and the class name, never on the shown name.
     pub key: String,
     /// The dashboard made for this ship, when there is one.
     pub dashboard: Option<String>,
@@ -69,6 +74,10 @@ pub fn ship_of(state: &StateModel) -> Option<ShipView> {
     }
     let manufacturer = ship_manufacturer(&text("vehicle.state.manufacturer"), &class_name);
     let model = ship_model(&class_name);
+    let derived_name = ship_name(&text("vehicle.state.name"), &class_name);
+    let name = state
+        .ship_name_for(&class_name)
+        .map_or_else(|| derived_name.clone(), str::to_owned);
     Some(ShipView {
         key: if manufacturer.is_empty() {
             model.clone()
@@ -78,6 +87,8 @@ pub fn ship_of(state: &StateModel) -> Option<ShipView> {
         manufacturer,
         model,
         class_name,
+        name,
+        derived_name,
         dashboard: None,
     })
 }

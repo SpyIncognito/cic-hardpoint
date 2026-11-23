@@ -6,20 +6,15 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use sc_game::{GameApi, GameClient, GameClientOptions, ReplayGame, ReplayOptions, parse_recording};
-use sc_service::fleet::demo::{self, DEFAULT_PEERS, MAX_PEERS};
 use sc_service::paths;
 use sc_service::{DEFAULT_PORT, Service, ServiceOptions};
 
 const USAGE: &str = "\
 usage: hardpoint-service [--port N] [--game HOST:PORT | --replay FILE.jsonl]
-                  [--fleet-demo DIR|FILE.jsonl ... [--fleet-peers N]]
 
   --port N        pages on 127.0.0.1:N (default 47520, or SC_MIP_PORT; 0 picks a free port)
   --game ADDRESS  the game's telemetry server (default the local game, or SC_GAME_ADDRESS)
   --replay FILE   play a recording in a loop instead of the game
-  --fleet-demo P  DEMO: show the fleet panel with mock peers replayed from recordings (a
-                  folder of .jsonl files, or a file; repeat for more)
-  --fleet-peers N how many mock peers (default 5, at most 12)
 
 Settings and the bus file are where the TypeScript service keeps them (SC_CONTROL_BUS_FILE
 overrides the bus file).";
@@ -29,8 +24,6 @@ struct Args {
     port: Option<u16>,
     game: Option<String>,
     replay: Option<PathBuf>,
-    fleet_demo: Vec<PathBuf>,
-    fleet_peers: Option<usize>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -48,16 +41,6 @@ fn parse_args() -> Result<Args, String> {
             }
             "--game" => args.game = Some(value()?),
             "--replay" => args.replay = Some(value()?.into()),
-            "--fleet-demo" => args.fleet_demo.push(value()?.into()),
-            "--fleet-peers" => {
-                args.fleet_peers = Some(
-                    value()?
-                        .parse()
-                        .ok()
-                        .filter(|n| (1..=MAX_PEERS).contains(n))
-                        .ok_or_else(|| format!("--fleet-peers must be 1 to {MAX_PEERS}"))?,
-                )
-            }
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown argument {other}")),
         }
@@ -147,25 +130,9 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    if args.fleet_peers.is_some() && args.fleet_demo.is_empty() {
-        eprintln!("--fleet-peers needs --fleet-demo");
-        return ExitCode::from(2);
-    }
-    let fleet_demo = if args.fleet_demo.is_empty() {
-        None
-    } else {
-        match demo::open(&args.fleet_demo, args.fleet_peers.unwrap_or(DEFAULT_PEERS)) {
-            Ok(demo) => Some(demo),
-            Err(problem) => {
-                eprintln!("{problem}");
-                return ExitCode::FAILURE;
-            }
-        }
-    };
     let options = ServiceOptions {
         port: port(&args),
         game,
-        fleet_demo,
         ..ServiceOptions::standard()
     };
     let service = match Service::start(options).await {

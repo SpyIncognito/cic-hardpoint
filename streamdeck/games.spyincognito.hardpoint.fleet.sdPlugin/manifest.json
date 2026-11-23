@@ -1,0 +1,105 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "Hardpoint Fleet Status",
+  "Version": "0.1.0.0",
+  "Author": "Spy Incognito",
+  "Description": "Read-only status keys for your Hardpoint fleet: how many are up, who is down, one wingman, and a group roll-up dial. No controls, no sound, no game input.",
+  "Icon": "imgs/plugin/icon",
+  "Category": "Hardpoint Fleet Status",
+  "CategoryIcon": "imgs/plugin/category",
+  "UUID": "games.spyincognito.hardpoint.fleet",
+  "SDKVersion": 3,
+  "CodePath": "bin/plugin.js",
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "disabled"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "Actions": [
+    {
+      "Name": "Fleet count",
+      "UUID": "games.spyincognito.hardpoint.fleet.count",
+      "Icon": "imgs/actions/count",
+      "Tooltip": "How many are up in the whole fleet, a unit or a group. Press to refresh.",
+      "PropertyInspectorPath": "ui/count.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "imgs/actions/key",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "Name": "Downed alert",
+      "UUID": "games.spyincognito.hardpoint.fleet.downed",
+      "Icon": "imgs/actions/downed",
+      "Tooltip": "Flashes red when someone in scope goes down. Press to acknowledge.",
+      "PropertyInspectorPath": "ui/downed.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "imgs/actions/key",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "Name": "Wingman",
+      "UUID": "games.spyincognito.hardpoint.fleet.wingman",
+      "Icon": "imgs/actions/wingman",
+      "Tooltip": "One member's state and health.",
+      "PropertyInspectorPath": "ui/wingman.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "imgs/actions/key",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "Name": "Group roll-up dial",
+      "UUID": "games.spyincognito.hardpoint.fleet.dial",
+      "Icon": "imgs/actions/dial",
+      "Tooltip": "Stream Deck +: a group's counts on the dial screen. Turn to step through groups, press to return to the whole fleet.",
+      "PropertyInspectorPath": "ui/dial.html",
+      "Controllers": [
+        "Encoder"
+      ],
+      "SupportedInMultiActions": false,
+      "Encoder": {
+        "layout": "layouts/strip.json",
+        "Icon": "imgs/actions/dial",
+        "TriggerDescription": {
+          "Rotate": "Next group",
+          "Push": "Whole fleet",
+          "Touch": "Whole fleet"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/dial",
+          "ShowTitle": false
+        }
+      ]
+    }
+  ]
+}

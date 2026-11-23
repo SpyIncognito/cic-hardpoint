@@ -2,8 +2,21 @@
 //! service pushes them (PROTOCOL.md section 2a). Read leniently: the service validates the file,
 //! and a field the app does not know is ignored, so a newer service still works.
 
+use std::sync::LazyLock;
+
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+
+/// The page's Fleet tab: the fleet view, detachable like a dashboard tab but not one, so it has
+/// an id no dashboard tab can have, no placement and no bezel, and is on every dashboard.
+pub const FLEET_TAB: &str = "@fleet";
+
+static FLEET: LazyLock<Tab> = LazyLock::new(|| Tab {
+    id: FLEET_TAB.to_owned(),
+    name: "Fleet".to_owned(),
+    placement: None,
+    bezel: None,
+});
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Tab {
@@ -87,12 +100,18 @@ impl DashState {
     /// A tab by id, on screen or kept from the generic dashboard. Ids are unique across
     /// dashboards.
     pub fn tab(&self, id: &str) -> Option<&Tab> {
+        if id == FLEET_TAB {
+            return Some(&FLEET);
+        }
         self.tabs.iter().chain(&self.generic).find(|t| t.id == id)
     }
 
     /// The tab a detached window shows after the dashboard changed: the one of the same name on
     /// the new dashboard, else the generic one of that name, else its own if still there.
     pub fn follow(&self, old: &Tab) -> Option<&Tab> {
+        if old.id == FLEET_TAB {
+            return Some(&FLEET);
+        }
         let named = |t: &&Tab| t.name == old.name;
         self.tabs
             .iter()
@@ -213,6 +232,25 @@ mod tests {
         );
         assert!(s.is_confirm("v_self_destruct"));
         assert!(!s.is_confirm("v_gear"));
+    }
+
+    #[test]
+    fn the_fleet_tab_is_on_every_dashboard_and_never_follows_a_tab_named_fleet() {
+        let mut s = DashState::default();
+        assert_eq!(s.tab(FLEET_TAB).unwrap().name, "Fleet");
+        let fleet = s.tab(FLEET_TAB).unwrap().clone();
+        assert!(s.apply_dashboard(&json!({
+            "dashboard": { "tabs": [tab("fleet", "Fleet", true)] },
+            "board": { "id": "drak" },
+        })));
+        assert_eq!(s.follow(&fleet).unwrap().id, FLEET_TAB);
+        assert_eq!(s.tab("fleet").unwrap().id, "fleet");
+        let restore: Vec<&str> = s.restorable().iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(
+            restore,
+            ["fleet"],
+            "the Fleet tab has no remembered display"
+        );
     }
 
     fn tab(id: &str, name: &str, placed: bool) -> Value {

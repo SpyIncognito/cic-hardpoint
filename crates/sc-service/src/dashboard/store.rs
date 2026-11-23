@@ -23,8 +23,9 @@ use super::model::{
     Board, DEFAULT_ROWS, DashFile, Dashboard, GENERIC_ID, MAX_BOARDS, MAX_LABEL, MAX_TABS, ShipRef,
     Tab, manufacturer_theme, starter_file,
 };
+use super::themes::DEFAULT_THEME;
 use super::validate::{
-    Known, check_bezel, check_name, check_placement, check_tab, check_theme_ref,
+    Known, check_bezel, check_cell, check_name, check_placement, check_tab, check_theme_ref,
 };
 use crate::json::{int_in, to_pretty_text};
 
@@ -59,6 +60,9 @@ pub struct BoardInfo {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ship: Option<ShipRef>,
+    /// The ship's friendly name, for the picker.
+    #[serde(rename = "shipName", skip_serializing_if = "Option::is_none")]
+    pub ship_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     pub generic: bool,
@@ -71,6 +75,7 @@ impl BoardInfo {
             id: b.id.clone(),
             name: b.name.clone(),
             ship: b.ship.clone(),
+            ship_name: b.ship.as_ref().map(ShipRef::derived_name),
             theme: b.theme.clone(),
             generic: b.is_generic(),
             tabs: b.tabs.len(),
@@ -355,6 +360,30 @@ impl DashboardStore {
     }
 
     pub fn add_tab(&self, name: Option<&Value>) -> io::Result<Change> {
+        self.add_tab_in(name, None, &Known::default())
+    }
+
+    /// A new tab drawn in `theme`, the theme in use where it was added: the tab keeps it as its
+    /// own only when the dashboard's theme is another.
+    pub fn add_tab_in(
+        &self,
+        name: Option<&Value>,
+        theme: Option<&Value>,
+        known: &Known,
+    ) -> io::Result<Change> {
+        let theme = match theme {
+            None | Some(Value::Null) => None,
+            Some(raw) => {
+                let problems = check_theme_ref(raw, known);
+                if !problems.is_empty() {
+                    return Ok(Change {
+                        problems,
+                        tab: None,
+                    });
+                }
+                raw.as_str().map(str::to_owned)
+            }
+        };
         let mut inner = self.lock();
         if inner.active().tabs.len() >= MAX_TABS {
             return Ok(Change::refused(too_many_tabs()));
@@ -375,10 +404,12 @@ impl DashboardStore {
                 tab: None,
             });
         }
+        let board_theme = inner.active().theme.as_deref().unwrap_or(DEFAULT_THEME);
         let tab = Tab {
             id: format!("tab-{n}"),
             name: wanted,
             rows: DEFAULT_ROWS,
+            theme: theme.filter(|t| t != board_theme),
             ..Tab::default()
         };
         inner.active_mut().tabs.push(tab.clone());
@@ -448,11 +479,12 @@ impl DashboardStore {
         Ok(Change::done(None))
     }
 
-    /// Set the theme of the dashboard on screen by name, or go back to the default (`null`).
+    /// Set the theme of the dashboard on screen by name, or go back to the default (`null`). The
+    /// default is written as its name, so the stored theme is always the one the picker shows.
     pub fn set_theme(&self, raw: Option<&Value>, known: &Known) -> io::Result<Change> {
         let raw = raw.unwrap_or(&Value::Null);
         let theme = if raw.is_null() {
-            None
+            Some(DEFAULT_THEME.to_owned())
         } else {
             let problems = check_theme_ref(raw, known);
             if !problems.is_empty() {
@@ -465,6 +497,21 @@ impl DashboardStore {
         };
         let mut inner = self.lock();
         inner.active_mut().theme = theme;
+        self.commit(inner)?;
+        Ok(Change::done(None))
+    }
+
+    /// Set the cell size of the dashboard on screen, in px (one of [`CELLS`]).
+    pub fn set_cell(&self, raw: Option<&Value>) -> io::Result<Change> {
+        let cell = match check_cell(raw.unwrap_or(&Value::Null)) {
+            Ok(c) => c,
+            Err(p) => return Ok(Change::refused(p)),
+        };
+        let mut inner = self.lock();
+        if inner.active().cell == Some(cell) {
+            return Ok(Change::done(None));
+        }
+        inner.active_mut().cell = Some(cell);
         self.commit(inner)?;
         Ok(Change::done(None))
     }
@@ -532,6 +579,7 @@ impl DashboardStore {
         }
         let board = &mut inner.file.dashboards[i];
         board.theme = next.theme;
+        board.cell = next.cell;
         board.tabs = tabs;
         self.commit(inner)
     }
@@ -617,11 +665,7 @@ impl DashboardStore {
                 "At most {MAX_BOARDS} dashboards"
             )));
         }
-        let default_name = if ship.manufacturer.is_empty() {
-            ship.model.clone()
-        } else {
-            format!("{} {}", ship.manufacturer, ship.model)
-        };
+        let default_name = ship.derived_name();
         let name = match name_or(name, &default_name) {
             Ok(n) => n,
             Err(p) => {
@@ -727,6 +771,7 @@ impl DashboardStore {
             name,
             ship,
             theme,
+            cell: src.cell,
             tabs,
         }
     }

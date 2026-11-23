@@ -13,6 +13,9 @@
 //! | `close` | | `{ ok: true }`: closes the sender's own window (a detached tab) |
 //! | `dashboard` | | `{ ok: true }`: shows the main window |
 //! | `mapping` | `active` | `{ ok: true }`: pauses the app's bezel buttons on the sender's tab while the page maps them |
+//! | `openUrl` | `url` | `{ ok: true }` or `{ ok: false, problem: 'url' \| 'browser', text }`: opens a plain `https://` address (no credentials, query or fragment) in the system browser |
+//!
+//! `open` also takes the Fleet tab, `@fleet`, which has no remembered placement.
 //!
 //! Without `displayLabel`, `open` uses the tab's remembered placement. Remembering a display stays
 //! the page's job (`dash.setPlacement`), so the browser and the app keep one rule for it.
@@ -51,6 +54,9 @@ pub enum Request {
     Mapping {
         active: bool,
     },
+    OpenUrl {
+        url: String,
+    },
 }
 
 /// A page message: its id (to answer) and what it asks.
@@ -69,6 +75,8 @@ pub trait Host {
     fn close_window(&mut self, who: &Sender);
     fn show_dashboard(&mut self);
     fn set_mapping(&mut self, tab: &str, active: bool);
+    /// Called with a checked `https://` address only.
+    fn open_browser(&mut self, url: &str) -> Result<(), String>;
 }
 
 fn problem(kind: &str, text: String) -> Value {
@@ -165,6 +173,14 @@ pub fn handle(host: &mut impl Host, from: &Sender, text: &str) -> Result<(u64, V
                 ok
             }
             Sender::Main => ok,
+        },
+        Request::OpenUrl { url } if !sc_service::fleet::cic::is_openable(&url) => problem(
+            "url",
+            "Only a plain https:// address can be opened".to_owned(),
+        ),
+        Request::OpenUrl { url } => match host.open_browser(&url) {
+            Ok(()) => ok,
+            Err(e) => problem("browser", e),
         },
     };
     Ok((id, result))
@@ -302,6 +318,7 @@ mod tests {
         closed: Vec<Sender>,
         shown: usize,
         mapping: Vec<(String, bool)>,
+        browsed: Vec<String>,
         fail: bool,
     }
 
@@ -327,6 +344,10 @@ mod tests {
         }
         fn set_mapping(&mut self, tab: &str, active: bool) {
             self.mapping.push((tab.into(), active));
+        }
+        fn open_browser(&mut self, url: &str) -> Result<(), String> {
+            self.browsed.push(url.into());
+            Ok(())
         }
     }
 
@@ -431,6 +452,25 @@ mod tests {
                 ("mip".into(), "MFD Left".into(), false)
             ]
         );
+    }
+
+    #[test]
+    fn the_fleet_tab_opens_on_a_chosen_display_only() {
+        let mut h = host();
+        let p = |h: &mut FakeHost, m: &str| run(h, &Sender::Main, m);
+        assert_eq!(
+            p(&mut h, r#"{"id":1,"type":"open","tab":"@fleet"}"#)["problem"],
+            "display"
+        );
+        let r = p(
+            &mut h,
+            r#"{"id":2,"type":"open","tab":"@fleet","displayLabel":"MFD Left","fullscreen":false}"#,
+        );
+        assert_eq!(r, json!({ "ok": true }));
+        assert_eq!(h.opened, vec![("@fleet".into(), "MFD Left".into(), false)]);
+        let url = kiosk_url(47520, crate::model::FLEET_TAB, false);
+        assert_eq!(url, "http://127.0.0.1:47520/dash?tab=%40fleet&kiosk=1");
+        assert_eq!(kiosk_tab(&url, 47520), Some(("@fleet".into(), false)));
     }
 
     #[test]
@@ -548,5 +588,29 @@ mod tests {
             kiosk_tab(&url, 47520),
             Some(("shield-faces_2".into(), true))
         );
+    }
+
+    #[test]
+    fn opens_only_a_plain_https_address_in_the_browser() {
+        let mut h = host();
+        let open = |h: &mut FakeHost, url: &str| {
+            let text = json!({ "id": 1, "type": "openUrl", "url": url }).to_string();
+            run(h, &Sender::Main, &text)
+        };
+        assert_eq!(
+            open(&mut h, "https://cic.example.org/events/op-1"),
+            json!({ "ok": true })
+        );
+        for bad in [
+            "http://cic.example.org/events/op-1",
+            "file:///C:/Windows/System32/calc.exe",
+            "https://user:pass\u{40}cic.example.org/",
+            "https://cic.example.org/events/op-1?x=1",
+            "https://cic.example.org/\" & calc",
+            "ms-settings:",
+        ] {
+            assert_eq!(open(&mut h, bad)["problem"], "url", "{bad}");
+        }
+        assert_eq!(h.browsed, ["https://cic.example.org/events/op-1"]);
     }
 }

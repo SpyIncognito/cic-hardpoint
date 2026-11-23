@@ -1,12 +1,12 @@
 //! The app's own settings file, `app-settings.json` in the settings folder, beside the service's
-//! files. Read leniently: a missing or unreadable file, or a field that is not understood, falls
+//! files (the service keeps the dashboard's time settings in it too). Read leniently: a missing or unreadable file, or a field that is not understood, falls
 //! back to the default for that field.
 
 use std::path::Path;
 
 use serde_json::Value;
 
-pub const FILE: &str = "app-settings.json";
+pub const FILE: &str = sc_service::time_settings::FILE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettings {

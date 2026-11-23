@@ -1,4 +1,5 @@
-# Builds hardpoint.exe on a GitHub-hosted Windows runner and publishes it as a release.
+# Builds hardpoint.exe and the Stream Deck plugin on a GitHub-hosted Windows runner and publishes
+# them as a release.
 # A pushed version tag (v*) makes a release; a manual run is a dry run that only uploads the
 # build as a workflow artifact. No secrets and no code signing.
 name: release
@@ -17,6 +18,7 @@ jobs:
       contents: read
     outputs:
       sha256: ${{ steps.sums.outputs.sha256 }}
+      sha256_plugin: ${{ steps.sums.outputs.sha256_plugin }}
     defaults:
       run:
         shell: bash
@@ -56,13 +58,27 @@ jobs:
           mkdir -p dist
           cp target/x86_64-pc-windows-msvc/release/hardpoint.exe dist/
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Test and pack the Stream Deck plugin
+        working-directory: streamdeck
+        run: |
+          node --version
+          npm ci
+          npm test
+          npm run pack
+          cp dist/games.spyincognito.hardpoint.fleet.streamDeckPlugin ../dist/
+
       - name: Checksums
         id: sums
         working-directory: dist
         run: |
-          sha256sum hardpoint.exe > SHA256SUMS
+          sha256sum hardpoint.exe games.spyincognito.hardpoint.fleet.streamDeckPlugin > SHA256SUMS
           cat SHA256SUMS
-          echo "sha256=$(cut -d' ' -f1 SHA256SUMS)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum hardpoint.exe | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha256_plugin=$(sha256sum games.spyincognito.hardpoint.fleet.streamDeckPlugin | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -87,25 +103,31 @@ jobs:
       - name: Build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/hardpoint.exe
+          subject-path: |
+            dist/hardpoint.exe
+            dist/games.spyincognito.hardpoint.fleet.streamDeckPlugin
 
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           SHA256: ${{ needs.build.outputs.sha256 }}
+          SHA256_PLUGIN: ${{ needs.build.outputs.sha256_plugin }}
         run: |
           cat > notes.md <<NOTES
           Hardpoint ${TAG}, a Star Citizen ship dashboard for Windows.
 
-          Download hardpoint.exe and check it against SHA256SUMS:
+          Download hardpoint.exe and, if you use a Stream Deck, the Hardpoint Fleet Status plugin
+          games.spyincognito.hardpoint.fleet.streamDeckPlugin. Check both against SHA256SUMS:
 
               ${SHA256}  hardpoint.exe
+              ${SHA256_PLUGIN}  games.spyincognito.hardpoint.fleet.streamDeckPlugin
 
-          Build provenance is attested for this file (gh attestation verify hardpoint.exe --repo ${GITHUB_REPOSITORY}).
+          Build provenance is attested for both files (gh attestation verify <file> --repo ${GITHUB_REPOSITORY}).
           The exe is not code-signed yet, so Windows SmartScreen may warn on first run.
+          The plugin needs Stream Deck 7.1 or later; double-click it and Stream Deck installs it.
 
           Spy Incognito Games. Licensed under the Apache License, Version 2.0.
           NOTES
-          gh release create "$TAG" dist/hardpoint.exe dist/SHA256SUMS \
+          gh release create "$TAG" dist/hardpoint.exe dist/games.spyincognito.hardpoint.fleet.streamDeckPlugin dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --title "Hardpoint $TAG" --notes-file notes.md --verify-tag

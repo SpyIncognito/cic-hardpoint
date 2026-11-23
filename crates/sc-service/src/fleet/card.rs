@@ -1,7 +1,5 @@
-//! The fleet card builder: what one member shares, built from their own game state. A real fleet
-//! sender and the demo's mock peers both build cards here, so the viewer never sees a card shape
-//! that only the demo makes. The card's shape, its fields and the consent rules are in
-//! `fleet-proto`, shared with the relay.
+//! The fleet card builder: what this player shares, built from their own game state. The card's
+//! shape, its fields and the consent rules are in `fleet-proto`, shared with the relay.
 //!
 //! What goes on a card is capped twice: by what the sender consents to send ([`SendConsent`],
 //! field by field) and by what viewers asked for (the subscription). The aUEC balance, keybinds
@@ -272,6 +270,7 @@ fn power(state: &StateModel) -> FieldValue {
 fn value_of(state: &StateModel, id: &str) -> FieldValue {
     match id {
         "ship.name" => text_of(state, "ship.name"),
+        "ship.class" => text_of(state, "ship.class_name"),
         "ship.mode" => text_of(state, "ship.master_mode"),
         "ship.shields" => fraction_of(state, "ship.shields"),
         "ship.hull" => fraction_of(state, "ship.hull"),
@@ -280,6 +279,8 @@ fn value_of(state: &StateModel, id: &str) -> FieldValue {
         "ship.cautions" => cautions(state),
         "ship.weapons" => weapons_ready(state),
         "ship.aboard" => aboard(state),
+        "ship.crew_role" => text_of(state, "actor.crew_role"),
+        "ship.seat" => text_of(state, "actor.seat"),
         "char.health" => fraction_of(state, "actor.health"),
         "char.oxygen" => fraction_of(state, "actor.oxygen"),
         "char.activity" => activity(state),
@@ -317,5 +318,6 @@ pub fn build_card(
         sharing,
         state: sharing.character.then(|| life.life(now_ms)),
         fields: Fields(fields),
+        source: None,
     }
 }

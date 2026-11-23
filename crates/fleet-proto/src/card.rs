@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Bumped when a card's shape changes in a way an older viewer would misread.
 pub const CARD_SCHEMA: u32 = 1;
-/// A member id (the fleet identity) is 1 to 64 of `A-Z a-z 0-9 _ -`.
+/// A member id is 1 to 64 of `A-Z a-z 0-9 _ -`: the CIC account's user id on a relay, the key's
+/// text form peer to peer.
 pub const MAX_MEMBER_ID: usize = 64;
 /// A handle is 1 to 40 characters of plain text.
 pub const MAX_HANDLE: usize = 40;
@@ -41,6 +42,7 @@ const fn field(id: &'static str, label: &'static str, consent: Consent) -> Field
 /// Every field a card can carry, in display order.
 pub const FIELDS: &[FieldDef] = &[
     field("ship.name", "Ship", Consent::Ship),
+    field("ship.class", "Ship class", Consent::Ship),
     field("ship.mode", "Master mode", Consent::Ship),
     field("ship.shields", "Shields", Consent::Ship),
     field("ship.hull", "Hull", Consent::Ship),
@@ -49,6 +51,8 @@ pub const FIELDS: &[FieldDef] = &[
     field("ship.cautions", "Cautions", Consent::Ship),
     field("ship.weapons", "Weapons ready", Consent::Ship),
     field("ship.aboard", "In a ship", Consent::Ship),
+    field("ship.crew_role", "Crew role", Consent::Ship),
+    field("ship.seat", "Seat", Consent::Ship),
     field("char.health", "Health", Consent::Character),
     field("char.oxygen", "Oxygen", Consent::Character),
     field("char.activity", "On foot or seated", Consent::Character),
@@ -79,6 +83,20 @@ pub fn is_member_id(s: &str) -> bool {
     (1..=MAX_MEMBER_ID).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// The prefix of a relay-authored ship card's member: `ship:<unit id>`, outside the member space.
+pub const SHIP_CARD_PREFIX: &str = "ship:";
+
+pub fn ship_card_id(unit: &str) -> String {
+    format!("{SHIP_CARD_PREFIX}{unit}")
+}
+
+/// The unit id of a ship card's member, `None` for a member's own card.
+pub fn ship_card_unit(member: &str) -> Option<&str> {
+    member
+        .strip_prefix(SHIP_CARD_PREFIX)
+        .filter(|u| crate::structure::is_id(u))
 }
 
 pub fn is_handle(s: &str) -> bool {
@@ -230,15 +248,26 @@ impl<'de> Deserialize<'de> for Fields {
 #[serde(rename_all = "camelCase")]
 pub struct Card {
     pub schema: u32,
-    /// The member's fleet identity (their public key's text form): stable, unlike the handle.
+    /// The member id ([`is_member_id`]), stable unlike the handle. A sender writes its key's text
+    /// form; a relay rewrites it to the account's user id. `ship:<unit id>` on a ship card.
     pub member: String,
-    /// The name the member chose for their card.
+    /// The name the member chose for their card; a ship card's is the ship's name.
     pub handle: String,
     pub sharing: Sharing,
     /// Only with character sharing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<Life>,
     pub fields: Fields,
+    /// Ship cards only: where its fields come from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::ship::ShipSource>,
+}
+
+impl Card {
+    /// The ship unit this is the ship card of.
+    pub fn ship_unit(&self) -> Option<&str> {
+        ship_card_unit(&self.member)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -253,6 +282,10 @@ pub enum CardProblem {
     NotShared(&'static str),
     #[error("state is sent without character sharing")]
     StateNotShared,
+    #[error("a source on a card that is not a ship card")]
+    SourceNotShip,
+    #[error("a ship card carries ship fields only, with a source")]
+    BadShipCard,
 }
 
 impl Card {
@@ -262,8 +295,15 @@ impl Card {
         if self.schema > CARD_SCHEMA {
             return Err(CardProblem::NewerSchema(self.schema));
         }
-        if !is_member_id(&self.member) {
+        if self.ship_unit().is_some() {
+            let ship_only = !self.sharing.character && !self.sharing.detail && self.state.is_none();
+            if !ship_only || self.source.is_none() {
+                return Err(CardProblem::BadShipCard);
+            }
+        } else if !is_member_id(&self.member) {
             return Err(CardProblem::BadMember);
+        } else if self.source.is_some() {
+            return Err(CardProblem::SourceNotShip);
         }
         if !is_handle(&self.handle) {
             return Err(CardProblem::BadHandle);
@@ -300,6 +340,7 @@ mod tests {
                 ("ship.name", FieldValue::text("Cutter", Tone::Info)),
                 ("ship.hull", FieldValue::text("80%", Tone::Ok)),
             ]),
+            source: None,
         }
     }
 
@@ -352,5 +393,35 @@ mod tests {
         let mut c = card();
         c.handle = "<b>".to_owned();
         assert_eq!(c.check(), Err(CardProblem::BadHandle));
+
+        let mut c = card();
+        c.source = Some(crate::ship::ShipSource::offline());
+        assert_eq!(c.check(), Err(CardProblem::SourceNotShip));
+    }
+
+    #[test]
+    fn ship_cards_have_their_own_id_space_and_ship_fields_only() {
+        let mut c = card();
+        c.member = ship_card_id("red-1");
+        assert_eq!(c.ship_unit(), Some("red-1"));
+        assert_eq!(c.check(), Err(CardProblem::BadShipCard));
+        c.source = Some(crate::ship::ShipSource::offline());
+        assert!(c.check().is_ok());
+        c.sharing.character = true;
+        assert_eq!(c.check(), Err(CardProblem::BadShipCard));
+        assert_eq!(ship_card_unit("ship:Bad!"), None);
+        assert_eq!(ship_card_unit("m-1"), None);
+        assert!(!is_member_id("ship:red-1"));
+    }
+
+    #[test]
+    fn the_new_ship_fields_are_in_the_ship_group() {
+        for id in ["ship.crew_role", "ship.seat", "ship.class"] {
+            assert_eq!(
+                field_def(id).map(|f| f.consent),
+                Some(Consent::Ship),
+                "{id}"
+            );
+        }
     }
 }

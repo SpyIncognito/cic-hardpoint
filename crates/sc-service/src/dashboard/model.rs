@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde::ser::{SerializeMap, Serializer};
 
-use sc_core::state::{VALUES, ValueKind};
+use sc_core::state::{VALUES, ValueKind, maker_short, ship_name};
 
 pub const SCHEMA_VERSION: u32 = 1;
 pub const COLUMNS: u32 = 24;
@@ -12,6 +12,9 @@ pub const DEFAULT_ROWS: u32 = 14;
 pub const MIN_ROWS: u32 = 4;
 pub const MAX_ROWS: u32 = 48;
 pub const MAX_TABS: usize = 20;
+/// The square cell sizes in px a dashboard may use; one without a size uses [`DEFAULT_CELL`].
+pub const CELLS: [u32; 5] = [48, 64, 72, 80, 96];
+pub const DEFAULT_CELL: u32 = 72;
 pub const MAX_WIDGETS: usize = 200;
 /// In UTF-16 code units, as the TS counts `length`.
 pub const MAX_LABEL: usize = 40;
@@ -232,6 +235,9 @@ pub struct Dashboard {
     /// only ever named here, never defined.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// The square cells' size in px, one of [`CELLS`]; [`DEFAULT_CELL`] when left out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell: Option<u32>,
     pub tabs: Vec<Tab>,
 }
 
@@ -455,6 +461,7 @@ pub fn starter() -> Dashboard {
     Dashboard {
         schema_version: SCHEMA_VERSION,
         theme: None,
+        cell: None,
         tabs: vec![starter_tab()],
     }
 }
@@ -481,6 +488,21 @@ pub struct ShipRef {
     pub class_name: Option<String>,
 }
 
+impl ShipRef {
+    /// The ship's name as `ship.name` derives it, before any name the user gave it.
+    pub fn derived_name(&self) -> String {
+        if let Some(class_name) = self.class_name.as_deref().filter(|c| !c.is_empty()) {
+            return ship_name("", class_name);
+        }
+        let maker = maker_short(&self.manufacturer).unwrap_or(&self.manufacturer);
+        if maker.is_empty() {
+            self.model.clone()
+        } else {
+            format!("{maker} {}", self.model)
+        }
+    }
+}
+
 /// One dashboard: its tabs and theme, and the ship it is for (none for the generic one).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Board {
@@ -490,6 +512,9 @@ pub struct Board {
     pub ship: Option<ShipRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// The square cells' size in px; [`DEFAULT_CELL`] when left out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell: Option<u32>,
     pub tabs: Vec<Tab>,
 }
 
@@ -503,6 +528,7 @@ impl Board {
         Dashboard {
             schema_version: SCHEMA_VERSION,
             theme: self.theme.clone(),
+            cell: self.cell,
             tabs: self.tabs.clone(),
         }
     }
@@ -527,6 +553,7 @@ pub fn generic_board(dash: Dashboard) -> Board {
         name: "Generic".into(),
         ship: None,
         theme: dash.theme,
+        cell: dash.cell,
         tabs: dash.tabs,
     }
 }

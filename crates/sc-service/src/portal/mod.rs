@@ -1,6 +1,7 @@
 //! The portal and dashboard pages' WebSocket: the status model, the catalog, and the session
 //! that runs every page message through one place.
 
+pub mod policy;
 pub mod session;
 pub mod status;
 

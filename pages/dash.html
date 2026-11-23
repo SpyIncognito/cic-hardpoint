@@ -44,7 +44,7 @@
     [data-base="drake"] #body { background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--accent) 9%, var(--bg)), var(--bg) 75%); }
     /* A faint CRT scanline over the whole Drake screen; it never takes a click. */
     [data-base="drake"]::after { content: ""; position: fixed; inset: 0; z-index: 40; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--bg) 22%, transparent) 2px 3px); }
-    button, input, select, textarea { font: inherit; color: inherit; }
+    button, input, select, textarea, a.btn { font: inherit; color: inherit; }
     /* Every text field and list takes its colours from the theme, never the native white control;
        color-scheme keeps WebView2 and Chromium from drawing light scrollbars, pickers and option lists. */
     :root { color-scheme: dark; }
@@ -82,8 +82,10 @@
 
     /* ------------------------------------------------------------ stage and pane */
     #body { flex: 1 1 auto; display: flex; min-height: 0; }
-    #stage { flex: 1 1 auto; position: relative; overflow: hidden; min-width: 0; }
-    .editing #stage { background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px); background-size: var(--cw, 40px) var(--ch, 40px); background-color: var(--bg); }
+    /* Cells are square and fixed in px (the dashboard's cell size): a small window scrolls the grid from the top left, it never rescales it. */
+    #stage { flex: 1 1 auto; position: relative; overflow: auto; min-width: 0; }
+    #stage > #grid { flex: none; }
+    .editing #stage { background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px); background-size: var(--cw, 40px) var(--ch, 40px); background-attachment: local; background-color: var(--bg); }
     #pane { flex: 0 0 var(--pane-w); border-left: 1px solid var(--line); background: var(--panel); display: none; flex-direction: column; min-height: 0; }
     .editing #pane { display: flex; }
     #pane section { padding: 10px 12px; border-bottom: var(--lw) var(--rule) var(--line); }
@@ -93,6 +95,7 @@
     #pane input:not([type=checkbox]), #pane select { width: 100%; min-width: 0; padding: 4px 6px; }
     #pane .row { display: flex; gap: 6px; flex-wrap: wrap; }
     #pane .note { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+    #pane .note.warn { color: var(--warn); }
     #pane ol { margin: 4px 0 0; padding-left: 20px; color: var(--dim); }
     #palette { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; border-bottom: 0 !important; }
     #palette .filters { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -107,6 +110,10 @@
     .grid-stack-item-content { overflow: hidden !important; container-type: size; }
     .grid-stack-item.sel > .grid-stack-item-content::before { content: ""; position: absolute; inset: 0; border: 3px solid var(--select); z-index: 2; pointer-events: none; }
     .editing .grid-stack-item-content { cursor: move; }
+    /* Gridstack handles touch itself, but its 20 px corner is small for a finger: a bigger target, the same mark. any-pointer: a Surface with its keyboard reports a fine primary pointer. */
+    @media (any-pointer: coarse) {
+      .editing .grid-stack-item > .ui-resizable-se { width: 40px; height: 40px; background-size: 20px; }
+    }
     .grid-stack-placeholder > .placeholder-content { background: color-mix(in srgb, var(--select) 15%, transparent) !important; border: 1px dashed var(--select); }
     /* The service times the hold; this only draws it. */
     .grid-stack-item-content.holding::after { content: ""; position: absolute; left: 0; bottom: 0; height: 6%; min-height: 3px; width: calc(var(--hold, 0) * 100%); background: var(--bad); pointer-events: none; }
@@ -164,7 +171,8 @@
     .button.round { border: 0; background: none; }
     .button.round .disc { width: min(96cqw, 96cqh); height: min(96cqw, 96cqh); border-radius: 50%; background: var(--panel); border: var(--lw) solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4cqmin; padding: 10cqmin; }
     .button.round .lbl, .button.round .val { font-size: min(calc(16 * 1cqmin), calc(70cqmin / var(--n))); }
-    .button.confirm { border-color: var(--bad); }
+    /* A finger that drifts on a hold must not pan the page, which cancels the pointer. */
+    .button.confirm { border-color: var(--bad); touch-action: none; -webkit-touch-callout: none; }
     .button.round.confirm .disc { border-color: var(--bad); }
     .tag { color: var(--bad); }
 
@@ -343,13 +351,18 @@
     dialog .body p { margin: 0 0 8px; }
     dialog ul { margin: 0 0 8px; padding-left: 18px; color: var(--dim); max-height: 40vh; overflow-y: auto; }
     dialog .warn { color: var(--warn); }
-    dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    dialog .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    dialog .row .btn { max-width: 100%; white-space: normal; text-align: center; }
     #notice { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line); display: none; max-width: min(420px, calc(100vw - 32px)); z-index: 10; }
     #notice.bad { border-color: var(--bad); } #notice.ok { border-color: var(--ok); }
 
     /* ------------------------------------------------------------ detach, kiosk and bezel */
     #pane #props { flex: 0 0 auto; overflow-y: auto; max-height: 62%; }
     #pane h2.sub { margin-top: 14px; }
+    #pane ul.names { margin: 8px 0 0; padding: 0; list-style: none; }
+    #pane ul.names li { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+    #pane ul.names span { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+    #pane ul.names small { color: var(--dim); }
     #pane ul.maps { margin: 4px 0 6px; padding: 0; list-style: none; color: var(--fg); }
     #pane ul.maps li { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed var(--line); min-width: 0; }
     #pane ul.maps b { flex: 0 0 auto; color: var(--accent); font-weight: 600; min-width: 2.4em; }
@@ -481,19 +494,109 @@
     @media (max-width: 1280px) { body { --fleet-w: 320px; } }
     #fleet { flex: 0 0 var(--fleet-w); width: var(--fleet-w); display: none; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); font-family: var(--font); }
     body.fleet-on:not(.editing):not(.theming) #fleet { display: flex; }
-    .demo-flag { flex: 0 0 auto; align-self: center; padding: 3px 8px; border: 1px solid var(--warn); border-radius: var(--radius); background: var(--lamp-minor-bg); color: var(--lamp-minor-fg); font: 700 11px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; }
+    /* The Fleet tab: the same view as the panel, in place of the stage, its units in columns. */
+    #fleet-full { flex: 1 1 auto; min-width: 0; display: none; flex-direction: column; min-height: 0; background: var(--panel); font-family: var(--font); }
+    body.fleet-tab:not(.editing) #fleet-full { display: flex; }
+    body.fleet-tab:not(.editing) #stage { display: none; }
+    #fleet-full .fhead { padding: 10px 16px; }
+    /* Columns inside the scroller, so they grow down and scroll rather than run off to the side. */
+    #fleet-full .fcols { column-width: 400px; column-gap: 12px; column-rule: var(--lw) var(--rule) var(--line); padding: 0 8px 8px; }
+    #fleet-full .fevent, #fleet-full .funit, #fleet-full .funassigned, #fleet-full .fwing, #fleet-full .fgroup { break-inside: auto; }
+    #fleet-full .funit-h, #fleet-full .fgroup-h, #fleet-full .fwing-h, #fleet-full .fcard, #fleet-full .arow, #fleet-full .fnone, #fleet-full .funassigned li { break-inside: avoid; }
+    #fleet-full .fempty, #fleet-full .fchoose { max-width: 720px; column-span: all; }
+    #fleet-full .ahead { column-span: all; padding: 10px 8px; }
+    .tab.fleettab { margin-left: 12px; }
+    /* The connection: a dot by state, here and on the Fleet button. */
+    .fdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--off); flex: 0 0 auto; }
+    [data-link="online"] .fdot, .fdot[data-link="online"] { background: var(--ok); }
+    [data-link="connecting"] .fdot, .fdot[data-link="connecting"] { background: var(--warn); }
+    [data-link="offline"] .fdot, .fdot[data-link="offline"], [data-link="refused"] .fdot, .fdot[data-link="refused"] { background: var(--bad); }
     .btn.on { border-color: var(--select); color: var(--select); }
-    #fleet .fhead { flex: 0 0 auto; padding: 8px 10px; border-bottom: var(--lw) var(--rule) var(--line); display: grid; gap: 6px; }
-    #fleet .ftitle { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-    #fleet .ftitle h2 { margin: 0; font: var(--weight-value) 15px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; color: var(--fg); white-space: nowrap; }
-    #fleet .ftitle h2::before { content: var(--title-pre); }
-    #fleet .froll { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
-    #fleet .ftitle .x { margin-left: auto; padding: 0 8px; }
-    #fleet .demo-flag { align-self: stretch; text-align: center; }
-    #fleet .ftools { display: flex; gap: 4px; flex-wrap: wrap; }
-    #fleet .ftools .btn { padding: 3px 8px; font-size: 12px; }
-    #fleet .fbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-    #fleet .fempty { color: var(--dim); padding: 12px 10px; }
+    .fview .fhead { flex: 0 0 auto; padding: 8px 10px; border-bottom: var(--lw) var(--rule) var(--line); display: grid; gap: 6px; }
+    .fview .ftitle { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .fview .ftitle h2 { margin: 0; font: var(--weight-value) 15px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; color: var(--fg); white-space: nowrap; }
+    .fview .ftitle h2::before { content: var(--title-pre); }
+    .fview .froll { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+    .fview .ftitle .x { margin-left: auto; padding: 0 8px; }
+    .fview .share { flex: 0 0 auto; padding: 1px 6px; border: 1px solid var(--line); border-radius: var(--lamp-radius); font: 700 11px var(--font); letter-spacing: var(--tracking); text-transform: uppercase; white-space: nowrap; background: var(--lamp-off-bg); color: var(--lamp-off-fg); }
+    .fview .share[data-on="1"] { background: var(--lamp-on-bg); color: var(--lamp-on-fg); border-color: var(--lamp-on-fg); }
+    .fview .flink { display: flex; align-items: center; gap: 4px; font-size: 13px; min-width: 0; }
+    .fview .flink .ftext { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .fview .flink .ftext small { display: block; color: var(--dim); font-size: 12px; }
+    .fview .flink[data-link="offline"] .ftext, .fview .flink[data-link="refused"] .ftext { color: var(--bad); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking); }
+    .fview .flink[data-link="offline"] .ftext small, .fview .flink[data-link="refused"] .ftext small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--dim); }
+    .fview .fempty p { margin: 0 0 8px; }
+    .fview .fkey b, .mono { font-family: ui-monospace, Consolas, monospace; }
+    .role { flex: 0 0 auto; margin-left: 4px; color: var(--accent); font-size: 13px; line-height: 1; }
+    .role[data-role="admiral"] { color: var(--warn); }
+    .you { flex: 0 0 auto; margin-left: 4px; padding: 0 4px; border: 1px solid var(--select); border-radius: var(--lamp-radius); color: var(--select); font: 700 10px var(--font); letter-spacing: var(--tracking); }
+    .fwing { border-bottom: var(--lw) var(--rule) var(--line); }
+    .fwing-h { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: baseline; padding: 6px 8px; background: var(--panel); border-left: 4px solid var(--accent); }
+    .fwing-h .name { font-weight: var(--weight-value); letter-spacing: var(--tracking); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fwing-h .roll { grid-column: 1 / 3; color: var(--dim); font-size: 12px; }
+    .fwing-h .roll b, .fgroup-h .roll b { color: var(--bad); font-weight: 600; }
+    .fwing .fgroup { margin-left: 8px; }
+    .lead { color: var(--dim); font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; white-space: nowrap; }
+    .fwing-h .lead { margin-left: 0; text-align: right; }
+    .fgroup.condensed .fgroup-h { padding: 4px 8px; }
+    .fgroup.condensed .alist { padding: 4px 8px 6px; gap: 3px; }
+    .fgroup.condensed .arow { padding: 3px 8px; grid-template-columns: 6.6em minmax(0, 1fr) 4em 2.4em; gap: 6px; }
+    .fgroup.condensed .arow .chip { font-size: 11px; padding: 1px 4px; }
+    .fgroup.condensed .alist .hint { color: var(--faint); font-size: 12px; }
+    /* Joining and the send consent, beside the panel. */
+    #fleet-join, #fleet-consent, #fleet-host { top: calc(var(--bar-h) + 8px); right: calc(var(--fleet-w) + 8px); width: min(500px, calc(100vw - var(--fleet-w) - 32px)); max-height: calc(100vh - var(--bar-h) - 16px); overflow-y: auto; font-family: var(--font); }
+    body:not(.fleet-on) #fleet-join, body:not(.fleet-on) #fleet-consent, body:not(.fleet-on) #fleet-host { right: 8px; width: min(500px, calc(100vw - 16px)); }
+    body:not(.fleet-on) #fleet-detail, body:not(.fleet-on) #fleet-fields { right: 8px; width: min(460px, calc(100vw - 16px)); }
+    #fleet-join h4, #fleet-consent h4, #fleet-host h4 { margin: 14px 0 6px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    #fleet-join .stack { display: grid; gap: 4px; margin: 8px 0; }
+    #fleet-join textarea { resize: vertical; min-height: 4.2em; font-family: ui-monospace, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+    #fleet-join .flist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    #fleet-join .flist li { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+    #fleet-join .flist .fl { flex: 1 1 auto; min-width: 0; display: grid; }
+    #fleet-join .flist .fl small { color: var(--dim); overflow-wrap: anywhere; }
+    #fleet-join .flist .row { margin: 0; flex-wrap: nowrap; }
+    #fleet-join .fid { overflow-wrap: anywhere; }
+    #fleet-host .stack, #fleet-join .fjwho { display: grid; gap: 4px; margin: 8px 0; }
+    #fleet-host .pair { display: grid; grid-template-columns: minmax(0, 1fr) 7.5em; gap: 8px; }
+    #fleet-host textarea { resize: none; min-height: 3.6em; font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
+    #fleet-host .flist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    #fleet-host .flist li { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+    #fleet-host .flist .fl { flex: 1 1 auto; min-width: 0; display: grid; }
+    #fleet-host .flist .fl b, #fleet-host .flist .fl small { overflow-wrap: anywhere; }
+    #fleet-host .flist .fl small { color: var(--dim); }
+    #fleet-host .flist .row { margin: 0; flex-wrap: nowrap; flex: 0 0 auto; }
+    #fleet-host .hstate { margin: 4px 0; overflow-wrap: anywhere; }
+    #fleet-host .tag { color: var(--accent); font-size: 11px; letter-spacing: .06em; }
+    #fleet-host .code { font-family: ui-monospace, Consolas, monospace; font-size: 15px; letter-spacing: .06em; }
+    #fleet-join .fjwho { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+    #fleet-join .fjwho b, #fleet-join .fjwho span { overflow-wrap: anywhere; }
+    /* Relay: the panel, the banner while a companion has no game PC, and the via mark. */
+    #relay-panel { top: calc(var(--bar-h) + 8px); right: 8px; width: min(560px, calc(100vw - 16px)); max-height: calc(100vh - var(--bar-h) - 16px); overflow-y: auto; font-family: var(--font); }
+    #relay-panel h4 { margin: 14px 0 6px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    #relay-panel .modes { display: grid; gap: 6px; }
+    #relay-panel .modes label { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; cursor: pointer; }
+    #relay-panel .modes label.on { border-color: var(--accent); }
+    #relay-panel .modes small, #relay-panel .peer small { display: block; color: var(--dim); overflow-wrap: anywhere; }
+    #relay-panel .stack { display: grid; gap: 4px; margin: 8px 0; }
+    #relay-panel .pair-row { display: grid; grid-template-columns: 3fr 2fr; gap: 8px; }
+    #relay-panel .peer { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; overflow-wrap: anywhere; }
+    #relay-panel .state { margin: 4px 0 0; }
+    #relay-panel .code { font: var(--weight-value) 40px ui-monospace, Consolas, monospace; letter-spacing: .12em; margin: 4px 0; }
+    #relay-panel .bad { color: var(--bad); }
+    #relay-banner { position: fixed; z-index: 15; left: 0; right: 0; top: var(--bar-h); display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; padding: 8px 16px; background: var(--panel-2); border-bottom: 2px solid var(--bad); font-family: var(--font); text-align: center; }
+    #relay-banner[hidden] { display: none; }
+    body.relay-down #stage, body.relay-down .fview { opacity: .45; pointer-events: none; }
+    .via { align-self: center; color: var(--dim); font-size: 12px; white-space: nowrap; }
+    #fleet-consent .fcgroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+    #fleet-consent fieldset { border: 1px solid var(--line); border-radius: var(--radius); margin: 0; padding: 4px 10px 8px; min-width: 0; }
+    #fleet-consent legend { padding: 0 4px; font-weight: var(--weight-label); }
+    #fleet-consent label { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+    #fleet-consent .fpreview { margin-top: 10px; border-top: var(--lw) var(--rule) var(--line); }
+    #fleet-consent .fpreview .fcard { cursor: default; }
+    .fview .ftools { display: flex; gap: 4px; flex-wrap: wrap; }
+    .fview .ftools .btn { padding: 3px 8px; font-size: 12px; }
+    .fview .fbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    .fview .fempty { color: var(--dim); padding: 12px 10px; }
     .fgroup { border-bottom: var(--lw) var(--rule) var(--line); }
     .fgroup.drop { outline: 2px dashed var(--select); outline-offset: -2px; }
     .fgroup-h { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 6px; align-items: center; padding: 6px 8px; background: var(--panel-2); }
@@ -537,13 +640,59 @@
     .ffacts span { white-space: nowrap; } .ffacts small { color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); font-size: 11px; margin-right: 4px; }
     .fage { color: var(--faint); font-size: 11px; text-align: right; }
     .fcard[data-st="OFFLINE"] .fage { color: var(--off); }
+    /* The event's unit tree: each level indented under its parent, with its lead and roll-up. */
+    .fevent, .funit, .funassigned { border-bottom: var(--lw) var(--rule) var(--line); }
+    .fkids { margin-left: 6px; border-left: var(--lw) var(--rule) var(--line); }
+    .fkids .funit:last-child { border-bottom: 0; }
+    .funit-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 6px 8px; background: var(--panel-2); min-width: 0; }
+    .fevent > .funit-h { background: var(--panel); border-left: 4px solid var(--warn); }
+    .funit[data-kind="fleet"] > .funit-h, .funit[data-kind="wing"] > .funit-h, .funit[data-kind="ground"] > .funit-h { background: var(--panel); border-left: 4px solid var(--accent); }
+    .funit-h .kind { color: var(--dim); font-size: 11px; letter-spacing: var(--tracking); text-transform: uppercase; }
+    .funit-h .name { font-weight: var(--weight-label); letter-spacing: var(--tracking); text-transform: uppercase; min-width: 0; overflow-wrap: anywhere; }
+    .funit-h .lead { margin-left: 0; white-space: normal; overflow-wrap: anywhere; }
+    .funit-h .roll { flex: 1 0 100%; color: var(--dim); font-size: 12px; }
+    .funit-h .roll b { color: var(--bad); font-weight: 600; }
+    .funit[data-closed] > .funit-h { opacity: .75; }
+    /* A squadron's ship is its Pilot's card: a one-line header, and the Copilot set in under the Pilot. */
+    .funit[data-fighter] > .funit-h .roll { flex: 0 1 auto; margin-left: auto; }
+    .funit[data-fighter] [data-seat="copilot"] { margin-left: 16px; }
+    .rlabel { margin-left: 3px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: var(--tracking); }
+    .lead .role { margin-left: 0; }
+    .fnone { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--dim); font-size: 13px; min-width: 0; }
+    .fnone .who { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--fg); }
+    .fnone .tag { flex: 0 0 auto; }
+    .fnone .why { flex: 1 1 auto; text-align: right; font-size: 12px; }
+    a.btn { display: inline-block; text-decoration: none; }
+    .btn.mv { padding: 0 6px; font-size: 11px; line-height: 18px; flex: 0 0 auto; }
+    .shiptag { flex: 0 0 auto; margin-right: 6px; padding: 0 4px; border: 1px solid var(--accent); border-radius: var(--lamp-radius); color: var(--accent); font: 700 10px var(--font); letter-spacing: var(--tracking); }
+    .src { font-style: italic; }
+    .na { flex: 0 0 auto; margin-left: 4px; padding: 0 4px; border: 1px dashed var(--warn); border-radius: var(--lamp-radius); color: var(--warn); font: 700 10px var(--font); letter-spacing: var(--tracking); }
+    .funit .alist, .fevent .alist { padding: 4px 6px 6px; gap: 3px; }
+    .funit .arow, .fevent .arow { grid-template-columns: 5.4em minmax(0, 1fr) 3.8em 2.2em; gap: 6px; padding: 3px 6px; }
+    .funit .arow .chip, .fevent .arow .chip { font-size: 11px; padding: 1px 4px; }
+    .funit .arow .who b, .fevent .arow .who b { font-size: 14px; }
+    .funit .arow .shiptag { display: none; }
+    .arow .who .btn.mv { align-self: flex-start; margin-top: 2px; }
+    .funassigned ul { list-style: none; margin: 0; padding: 6px 8px 8px; display: grid; gap: 4px; }
+    .funassigned li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; min-width: 0; }
+    .funassigned .who { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .funassigned .why { color: var(--dim); font-size: 12px; white-space: nowrap; }
+    .funassigned .why[data-on="1"] { color: var(--ok); }
+    .fchoose { padding: 10px; }
+    .fchoose p { margin: 0 0 8px; }
+    .fchoose ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .fchoose li { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+    .fchoose .fl { flex: 1 1 auto; min-width: 0; display: grid; overflow-wrap: anywhere; }
+    .fchoose .fl small { color: var(--dim); }
+    .fview .flink .ftext small.fhint { color: var(--warn); font-weight: 600; }
     /* Admiral view: one compact row per member, by state across groups. */
     .alist { display: grid; gap: 4px; padding: 8px; }
     .arow { display: grid; grid-template-columns: 7.6em minmax(0, 1fr) 4.4em 3.4em; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: var(--radius); background: var(--bg); cursor: pointer; font-size: 13px; min-width: 0; }
     .arow .chip { font-size: 12px; padding: 2px 6px; }
     .arow .chip { text-align: center; }
     .arow .who { min-width: 0; display: flex; flex-direction: column; }
-    .arow .who b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arow .who .nm { display: flex; align-items: center; min-width: 0; }
+    .arow .who b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .arow .who small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .arow .hp { display: grid; gap: 2px; text-align: right; }
     .arow .age { color: var(--faint); text-align: right; white-space: nowrap; font-size: 12px; }
@@ -574,6 +723,103 @@
       body { --pane-w: 100%; --bar-h: 40px; }
       .editing #stage { display: none; }
     }
+
+    /* ------------------------------------------------------------ the Fleet tab's board */
+    /* Square cells of the layout's size: the board scrolls in its box from the top left. */
+    #fleet-full .fbody.fbmode { overflow: hidden; display: flex; flex-direction: column; }
+    .fboard { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    .fbstate { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 16px; color: var(--dim); font-size: 12px; }
+    .fbstate:empty { display: none; }
+    .fbstate .lnote { color: var(--accent); }
+    .fblive { flex: 1 1 auto; min-height: 0; display: flex; }
+    .fbwrap { flex: 1 1 auto; min-width: 0; overflow: auto; padding: 4px; }
+    .fbwrap > .grid-stack { flex: none; }
+    #fb-board .grid-stack-item-content { container-type: normal; }
+    #fb-board .obj { text-align: left; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    /* A unit: its header and its own people, then its grid, which scrolls inside the unit's own size. */
+    #fb-board .unitobj > .fitbox { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
+    #fb-board .unitobj > .fitbox > .oh, #fb-board .unitobj > .fitbox > .ob { flex: 0 0 auto; overflow: visible; }
+    /* The grid starts at the unit's own left edge (4 px of margin and 1 px of border), so its cells line up with the board's. */
+    #fb-board .grid-stack-item > .obj.unitobj { overflow: visible !important; }
+    /* A unit's grid spans the unit's own edges, so its columns are exactly the unit's cells; it
+     * never scrolls sideways, and scrolls down only when the unit is made shorter than it. */
+    #fb-board .unitobj > .fitbox > .subwrap { flex: 1 1 auto; min-height: 0; overflow: hidden auto; margin: 0 calc(-1px - var(--obj-inset, 1px)); }
+    #fb-board .subwrap > .grid-stack.sub { flex: none; }
+    #fb-board .oh { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 3px 8px; border-bottom: var(--lw) var(--rule) var(--line); background: var(--panel-2); min-width: 0; }
+    #fb-board .oh .ot { flex: 1 1 auto; min-width: 0; font-weight: var(--weight-label); font-size: 12px; letter-spacing: var(--tracking); text-transform: uppercase; color: var(--accent); overflow-wrap: anywhere; }
+    #fb-board .oh .ok { flex: 0 0 auto; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking); }
+    /* A unit's title by tier: the top level largest, then its groups, then the units inside them
+     * (a fighter in its squadron), each a clear step down and every one above a card's name. */
+    #fb-board .unitobj[data-tier="0"] > .fitbox > .oh .ot { font-size: 20px; font-weight: 800; }
+    #fb-board .unitobj[data-tier="1"] > .fitbox > .oh .ot { font-size: 18px; font-weight: var(--weight-value); }
+    #fb-board .unitobj[data-tier="2"] > .fitbox > .oh .ot { font-size: 15.5px; font-weight: 600; }
+    /* Each object's own title alignment (unit-grid.js titleAlign); never its children's. */
+    #fb-board .obj[data-align="center"] > .oh .ot, #fb-board .obj[data-align="center"] > .fitbox > .oh .ot { text-align: center; }
+    /* Tight lines, so a unit's title stays within one cell over its grid. */
+    #fb-board .unitobj > .fitbox > .oh { align-items: center; padding-block: 1px; }
+    #fb-board .unitobj > .fitbox > .oh .ot { line-height: 1.15; }
+    /* A unit's own people sit close under its header, so a header and one condensed row fit one cell. */
+    #fb-board .unitobj > .fitbox > .ob { padding-block: 2px; }
+    #fb-board .unitobj > .fitbox > .ob > .alist { padding-block: 0; }
+    #fb-board .unitobj > .fitbox > .ob .arow { padding-block: 1px; }
+    #fb-board .unitobj > .fitbox > .ob .arow .who b { font-size: 14px; line-height: 1.15; }
+    #fb-board .unitobj > .fitbox > .ob .arow .who small { line-height: 1.15; }
+    #fb-board .oh .roll { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+    #fb-board .oh .roll b { color: var(--bad); }
+    #fb-board .oh .lead { font-size: 12px; }
+    #fb-board .obj[data-unit] > .fitbox > .oh { border-left: 3px solid var(--dim); }
+    #fb-board .obj[data-unit="fleet"] > .fitbox > .oh, #fb-board .obj[data-unit="wing"] > .fitbox > .oh, #fb-board .obj[data-unit="ground"] > .fitbox > .oh { border-left-color: var(--accent); }
+    #fb-board .ob { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px; font-size: 13px; }
+    #fb-board .ob .fcards { padding: 2px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    /* A narrow card wraps its top line rather than cutting the name off. */
+    #fb-board .fcard .frow { flex-wrap: wrap; }
+    #fb-board .fcard .frow .who { flex-basis: 6em; }
+    #fb-board .ob .alist { padding: 2px; }
+    #fb-board .hint { color: var(--dim); font-size: 12px; margin: 2px 0; }
+    #fb-board .hint.ok { color: var(--ok); }
+    #fb-board .leadline { margin: 2px 0; color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+    #fb-board .rbig { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-family: var(--font); }
+    #fb-board .rbig b { font-size: 22px; color: var(--value); margin-right: -6px; }
+    #fb-board .rbig span { color: var(--dim); font-size: 12px; }
+    #fb-board .rbig .rp.bad { color: var(--bad); font-weight: 600; }
+    #fb-board ul.names { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+    #fb-board ul.names li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 4px; border-bottom: 1px solid var(--line); }
+    #fb-board ul.names .why { color: var(--dim); font-size: 12px; white-space: nowrap; }
+    #fb-board ul.names .why[data-on="1"] { color: var(--ok); }
+    #fb-board .evhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+    #fb-board .newtag { flex: 0 0 auto; padding: 0 4px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    /* Handles, resize corners and the grids' backgrounds only in Edit. */
+    #fb-board .ui-resizable-handle { display: none !important; }
+    .fb-editing #fb-board .grid-stack-item:not(.ui-resizable-disabled) > .ui-resizable-handle { display: block !important; }
+    .fb-editing #fb-board .grid-stack-item > .ui-resizable-se { background-image: none; width: 14px; height: 14px; right: 3px; bottom: 3px; border-right: 2px solid var(--select); border-bottom: 2px solid var(--select); transform: none; }
+    @media (any-pointer: coarse) { .fb-editing #fb-board .grid-stack-item > .ui-resizable-se { width: 24px; height: 24px; } }
+    .fb-editing #fb-board .obj { border-style: dashed; }
+    .fb-editing #fb-board .oh { cursor: move; }
+    .fb-editing #fb-board .obj.sel { outline: 2px solid var(--select); outline-offset: -2px; }
+    .fb-editing #fb-board, .fb-editing #fb-board .grid-stack.sub { background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px); background-size: var(--fbcell, 72px) var(--fbcell, 72px); }
+    .fb-editing #fb-board .grid-stack.sub { background-color: color-mix(in srgb, var(--bg) 55%, transparent); }
+    /* The edit pane, as the dashboard editor's: the selection, what may be added, then the layout. */
+    .fbedit { flex: 0 0 300px; overflow-y: auto; border-left: 1px solid var(--line); background: var(--panel); }
+    .fbedit[hidden] { display: none; }
+    .fbedit section { padding: 10px 12px; border-bottom: var(--lw) var(--rule) var(--line); }
+    .fbedit h2 { margin: 0 0 8px; font: var(--weight-label) 12px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+    .fbedit h3 { margin: 0 0 6px; font-size: 14px; }
+    .fbedit label { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 6px; color: var(--dim); }
+    .fbedit input, .fbedit select { width: 100%; min-width: 0; padding: 4px 6px; }
+    .fbedit .pos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .fbedit .pos label { grid-template-columns: auto minmax(0, 1fr); gap: 4px; }
+    .fbedit .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+    .fbedit .crumb { margin: 0 0 4px; color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+    .fbedit .crumb .sep { color: var(--accent); }
+    .fbedit .hint { color: var(--dim); font-size: 12px; margin: 4px 0; }
+    .fbedit .addto { margin: 0 0 6px; color: var(--dim); overflow-wrap: anywhere; }
+    .fbedit .addto b { color: var(--accent); }
+    .fbedit .pitems { display: grid; gap: 2px; }
+    .fbedit .pitem { display: grid; gap: 1px; text-align: left; padding: 4px 6px; background: none; color: var(--fg); border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; font: inherit; }
+    .fbedit .pitem:hover, .fbedit .pitem:focus-visible { border-color: var(--line); background: var(--panel-2); }
+    .fbedit .pitem:disabled { opacity: .5; cursor: default; }
+    .fbedit .pitem small { color: var(--dim); font-size: 12px; }
+    #tools .muted { color: var(--dim); font-size: 12px; white-space: nowrap; }
   </style>
 </head>
 <body data-theme="rsi" data-base="rsi" data-font="condensed" data-bars="segmented" data-zeros="dim">
@@ -584,7 +830,8 @@
     </header>
     <div id="body">
       <main id="stage"><div id="empty"></div></main>
-      <aside id="fleet" aria-label="Fleet"></aside>
+      <section id="fleet-full" class="fview" aria-label="Fleet"></section>
+      <aside id="fleet" class="fview" aria-label="Fleet panel"></aside>
       <aside id="pane">
         <section id="props" data-accept="[data-do=save]"></section>
         <section id="palette">
@@ -611,8 +858,14 @@
   <div id="dash-panel" class="overlay" hidden data-accept="[data-dp=rename-ok]"></div>
   <div id="fleet-detail" class="overlay" hidden></div>
   <div id="fleet-fields" class="overlay" hidden></div>
+  <div id="fleet-join" class="overlay" hidden></div>
+  <div id="fleet-consent" class="overlay" hidden></div>
+  <div id="fleet-host" class="overlay" hidden></div>
+  <div id="relay-panel" class="overlay" hidden></div>
+  <div id="relay-banner" hidden></div>
 
   <script src="/vendor/gridstack/gridstack-all.js"></script>
+  <script src="/unit-grid.js"></script>
   <script>
     const TOKEN = '__TOKEN__';
     // A little over the service's 1.5 s, which it times from hold.start, so a hold never lands just short.
@@ -624,6 +877,10 @@
     // A detached tab: use mode only, no bar, the cursor hidden when idle, bezel buttons live.
     const KIOSK = Boolean(ONLY) && PARAMS.get('kiosk') === '1';
     const WANT_FS = KIOSK && PARAMS.get('fs') === '1';
+    // The Fleet tab: not a dashboard tab, so its id is one a dashboard tab cannot have.
+    const FLEET_TAB = '@fleet';
+    const FLEET_TAB_DEF = { id: FLEET_TAB, name: 'Fleet' };
+    const onFleetTab = () => currentId === FLEET_TAB;
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -632,6 +889,8 @@
     const waiting = new Map();
     let dash = null, meta = null, cat = null, vals = null;
     let currentId = ONLY, editing = false, work = null, selected = null, builtFor = '';
+    // The dashboard tab to go back to from the Fleet tab, for Edit.
+    let lastBoardTab = null;
     let grid = null;
     const seqResults = new Map();
     let themes = null, themeDraft = null;
@@ -648,15 +907,20 @@
       };
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data);
-        if (m.type === 'values') { vals = m; drawAll(); if (dashPanel) live('dash-panel', renderDashPanel); }
+        if (m.type === 'values') { onValues(m); }
         else if (m.type === 'dashboard') onDashboard(m);
         else if (m.type === 'catalog') { cat = m; live('props', renderPane); drawAll(); live('bezel-panel', renderBezelPanel); }
         else if (m.type === 'themes') onThemes(m);
+        else if (m.type === 'time') onTime(m);
+        else if (m.type === 'shipNames') onShipNames(m);
         else if (m.type === 'fleet') onFleet(m);
+        else if (m.type === 'fleetLayout') onFleetLayout();
+        else if (m.type === 'relay') onRelay(m);
         else if (m.type === 'notice') notice(m.text, m.tone);
         else if (m.type === 'result' && waiting.has(m.id)) { const cb = waiting.get(m.id); waiting.delete(m.id); cb(m.result, m.error); }
       };
-      ws.onclose = () => { vals = null; drawAll(); if (fleet) { closeFleetDetail(); fleet = null; renderFleet(); layoutFleet(); if (dash) renderBar(); } setTimeout(connect, 2000); };
+      // Holds die with the connection: a finger still down never fires on the next one.
+      ws.onclose = () => { endHold(); vals = null; drawAll(); if (fleet) { closeFleetDetail(); fleet = null; renderFleet(); layoutFleet(); if (dash) renderBar(); } setTimeout(connect, 2000); };
     }
     function send(msg, cb) {
       const id = nextId++;
@@ -673,6 +937,97 @@
       n.style.display = 'block';
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => { n.style.display = 'none'; }, 5000);
+    }
+
+    // ------------------------------------------------------------ times
+
+    // The service keeps the setting; the browser knows the zones. 'auto' is this computer's zone.
+    let timeSet = { zone: 'auto', clock: '24h' }, timeZones = [], timeFallback = '';
+    const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
+    const timeFormats = new Map();
+    /** Day, month, year, time and the zone's abbreviation: 22 Nov 2026, 16:35:12 MST. */
+    function timeParts(ms) {
+      const zone = timeSet.zone === 'auto' ? undefined : timeSet.zone;
+      const key = `${zone}|${timeSet.clock}`;
+      let f = timeFormats.get(key);
+      if (!f) {
+        const h12 = timeSet.clock === '12h';
+        const opts = { timeZone: zone, hourCycle: h12 ? 'h12' : 'h23' };
+        const clock = { day: 'numeric', month: 'short', year: 'numeric', hour: h12 ? 'numeric' : '2-digit', minute: '2-digit', second: '2-digit' };
+        try {
+          f = { main: new Intl.DateTimeFormat('en-GB', { ...opts, ...clock }),
+            // en-US names the zone (MST, EST); en-GB would say GMT-7 for most of the Americas.
+            zone: new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' }) };
+          timeFallback = '';
+        } catch {
+          // A zone this browser does not know: the computer's own, said in the Time settings.
+          timeFallback = `This browser does not know ${zone}; times show in ${LOCAL_ZONE}.`;
+          f = { main: new Intl.DateTimeFormat('en-GB', { hourCycle: opts.hourCycle, ...clock }),
+            zone: new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }) };
+        }
+        timeFormats.set(key, f);
+      }
+      const p = Object.fromEntries(f.main.formatToParts(ms).map((x) => [x.type, x.value]));
+      const tz = (f.zone.formatToParts(ms).find((x) => x.type === 'timeZoneName') || {}).value || '';
+      const ampm = p.dayPeriod ? ` ${p.dayPeriod.toUpperCase()}` : '';
+      return { date: `${p.day} ${p.month} ${p.year}`, time: `${p.hour}:${p.minute}:${p.second}${ampm} ${tz}`.trim() };
+    }
+    const fmtDateTime = (ms) => { const t = timeParts(ms); return `${t.date}, ${t.time}`; };
+    /** The time alone when it is today in the chosen zone, else with the date. */
+    const fmtWhen = (ms) => { const t = timeParts(ms); return t.date === timeParts(Date.now()).date ? t.time : `${t.date}, ${t.time}`; };
+    const shownZone = () => (timeSet.zone === 'auto' ? LOCAL_ZONE : timeSet.zone);
+
+    function onTime(m) {
+      timeSet = m.time;
+      timeZones = m.zones;
+      timeFormats.clear();
+      if (editing) live('props', renderPane);
+      if (fleet) { live('fleet', renderFleet); if (fleetDetail) live('fleet-detail', renderFleetDetail); }
+    }
+
+    // ------------------------------------------------------------ ship names
+
+    // Per ship class; the service applies them, so this is only for the setting itself.
+    let shipNames = {}, shipNameMax = 40, shipNamesFor = null;
+    function onValues(m) {
+      vals = m;
+      drawAll();
+      if (dashPanel) live('dash-panel', renderDashPanel);
+      const cls = m.ship ? m.ship.className : null;
+      if (editing && !selected && cls !== shipNamesFor) live('props', renderPane);
+    }
+    function onShipNames(m) {
+      shipNames = m.names || {};
+      shipNameMax = m.max || shipNameMax;
+      if (editing && !selected) live('props', renderPane);
+    }
+    function shipNameHtml() {
+      const ship = vals && vals.ship;
+      shipNamesFor = ship ? ship.className : null;
+      const own = ship ? shipNames[ship.className] : undefined;
+      const here = ship
+        ? `<label>Name <input id="d-shipname" maxlength="${shipNameMax}" value="${esc(own || '')}" placeholder="${esc(ship.derivedName)}" /></label>
+          <div class="row"><button class="btn" data-t="shipname-save" type="button">Save name</button><button class="btn" data-t="shipname-clear" data-class="${esc(ship.className)}" type="button" ${own ? '' : 'disabled'}>Clear</button></div>
+          <p class="note">For every ship of this class (${esc(ship.className)}): the status strip, dashboards, fleet card and portal show it. Saved at once. Clear brings back ${esc(ship.derivedName)}.</p>`
+        : '<p class="note">Get in a ship to give it a name of your own.</p>';
+      const others = Object.entries(shipNames).filter(([c]) => !ship || c !== ship.className);
+      const list = others.length
+        ? `<ul class="names">${others.map(([c, n]) => `<li><span><b>${esc(n)}</b><small>${esc(c)}</small></span><button class="btn" data-t="shipname-clear" data-class="${esc(c)}" type="button">Clear</button></li>`).join('')}</ul>`
+        : '';
+      return `<h2 class="sub">Ship name</h2>${here}${list}`;
+    }
+    function setShipName(className, name) {
+      send({ type: 'shipNames.set', className, name }, (r) => { if (r && r.problems && !r.problems.length) notice(name ? `Ship named ${name}` : 'Ship name cleared', 'ok'); });
+    }
+
+    function timeSettingsHtml() {
+      const zones = timeZones.includes(timeSet.zone) || timeSet.zone === 'auto' ? timeZones : [timeSet.zone, ...timeZones];
+      const sample = fmtDateTime(Date.now());
+      return `<h2 class="sub">Time</h2>
+          <label>Zone <select id="d-zone">${opt('auto', `Auto (${LOCAL_ZONE})`, timeSet.zone === 'auto')}${zones.map((z) => opt(z, z.replace(/_/g, ' '), z === timeSet.zone)).join('')}</select></label>
+          <label>Clock <select id="d-clock">${opt('24h', '24 hour', timeSet.clock === '24h')}${opt('12h', '12 hour', timeSet.clock === '12h')}</select></label>
+          <p class="note">Now: ${esc(sample)} (${esc(shownZone())}). Fleet update times use this. Saved at once.</p>
+          ${timeFallback ? `<p class="note warn">${esc(timeFallback)}</p>` : ''}`;
     }
 
     /** A modal choice; `body` is HTML the caller has already escaped. */
@@ -780,7 +1135,8 @@
       genericBoard = m.generic || null;
       boards = m.dashboards ? { list: m.dashboards, switchOnShipChange: m.switchOnShipChange, pinned: m.pinned, fileProblem: m.fileProblem } : null;
       meta = { kinds: m.kinds, lookOnlyFor: m.lookOnlyFor, leverSize: m.leverSize, lampValues: m.lampValues, limits: m.limits, confirmGroup: m.confirmGroup, greyable: new Set(m.greyable || []) };
-      const keepWork = editing && work && dirty();
+      // A deleted tab's changes are not kept: it is gone.
+      const keepWork = editing && work && dash.tabs.some((t) => t.id === work.id) && dirty();
       if (prev && board && prev.id !== board.id && prevTab && !keepWork) {
         // Another dashboard (a ship change or a pick): the tab of the same name, and a single-tab
         // window keeps its generic tab when the ship's dashboard has none of that name.
@@ -790,15 +1146,18 @@
         if (ONLY && next) { const u = new URL(location.href); u.searchParams.set('tab', next.id); history.replaceState(null, '', u); }
         if (editing) work = clone(serverTab(currentId) || dash.tabs[0]);
       }
-      if (!serverTab(currentId) && !keepWork) {
+      if (onFleetTab()) lastBoardTab = serverTab(lastBoardTab) ? lastBoardTab : dash.tabs[0].id;
+      else if (!serverTab(currentId) && !keepWork) {
         if (ONLY) { currentId = null; showEmpty(`There is no tab "${ONLY}" on this dashboard.`); return; }
         currentId = dash.tabs[0].id;
         work = editing ? clone(serverTab(currentId)) : null;
       } else if (editing && !dirty()) work = clone(serverTab(currentId));
       if (m.fileProblem && !shownProblem) { shownProblem = true; notice(m.fileProblem, 'bad'); }
+      healTheme();
       live('bar', renderBar);
       live('props', renderPane);
       buildGrid();
+      if (onFleetTab()) syncFleetTab();
       live('bezel-panel', renderBezelPanel);
       live('theme-panel', renderThemePanel);
       if (dashPanel) live('dash-panel', () => renderDashPanel(true));
@@ -818,9 +1177,11 @@
       if (ONLY) { $('bar').hidden = true; return; }
       const d = dirty();
       $('tabs').innerHTML = dash.tabs.map((t) => `<button class="tab ${t.id === currentId ? 'on' : ''}" data-tab="${esc(t.id)}" type="button">${esc(editing && work && t.id === work.id ? work.name : t.name)}</button>`).join('') +
-        (editing && dash.tabs.length < meta.limits.tabs ? '<button class="tab add" data-add-tab type="button" title="Add a tab">+ Tab</button>' : '');
+        (editing && dash.tabs.length < meta.limits.tabs ? '<button class="tab add" data-add-tab type="button" title="Add a tab">+ Tab</button>' : '') +
+        (fleet && !editing ? `<button class="tab fleettab ${onFleetTab() ? 'on' : ''}" data-tab="${FLEET_TAB}" type="button" title="The fleet view at full size; Detach opens it in its own window">Fleet</button>` : '');
       const picker = boards && board ? `<button class="btn board ${dashPanel ? 'on' : ''}" data-do="boards" type="button" title="Dashboards: the generic one and one per ship">${esc(board.name)} &#x25BE;</button>` : '';
-      $('tools').innerHTML = picker + (editing ? '' : fleetTools()) + (editing
+      if (FB.editing) { $('tools').innerHTML = '<span class="muted">Editing the Fleet tab</span><button class="btn" data-do="fb-cancel" type="button">Cancel</button><button class="btn primary" data-do="fb-done" type="button">Done</button>'; return; }
+      $('tools').innerHTML = picker + (editing ? '' : relayTools() + fleetTools()) + (editing
         ? `${d ? '<span class="dirty">unsaved</span>' : ''}<button class="btn" data-do="export" type="button">Export</button><button class="btn" data-do="import" type="button">Import</button>` +
           `<button class="btn" data-do="revert" type="button" ${d ? '' : 'disabled'}>Revert</button><button class="btn primary" data-do="save" type="button" ${d ? '' : 'disabled'}>Save</button><button class="btn" data-do="done" type="button">Done</button>`
         : `${restorable().length ? '<button class="btn" data-do="restore" type="button" title="Open each tab that has a display on that display">Restore detached tabs</button>' : ''}` +
@@ -848,14 +1209,17 @@
       const t = e.target.closest('[data-tab]');
       if (t && t.dataset.tab !== currentId) {
         if (!(await confirmLeave())) return;
+        if (!(await fbLeave())) return;
+        if (currentId && !onFleetTab()) lastBoardTab = currentId;
         currentId = t.dataset.tab;
+        if (!onFleetTab()) lastBoardTab = currentId;
         selected = null;
         work = editing ? clone(serverTab(currentId)) : null;
-        renderBar(); renderPane(); buildGrid();
+        renderBar(); renderPane(); buildGrid(); syncFleetTab();
       }
       if (e.target.closest('[data-add-tab]')) {
         if (!(await confirmLeave())) return;
-        send({ type: 'dash.addTab' }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); selected = null; renderBar(); renderPane(); buildGrid(); } });
+        send({ type: 'dash.addTab', theme: themes ? themeFor(shown()).id : null }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); selected = null; renderBar(); renderPane(); buildGrid(); } });
       }
     });
 
@@ -863,16 +1227,23 @@
       const b = e.target.closest('[data-do]');
       if (!b) return;
       const act = b.dataset.do;
-      if (act === 'edit') { editing = true; work = clone(serverTab(currentId)); selected = null; }
+      if (act === 'fb-done') { fbDone(); return; }
+      if (act === 'fb-cancel') { FB.changed = false; await fbLeave(); return; }
+      if (act === 'edit' && onFleetTab() && fbEditable()) { fbSetEditing(true); return; }
+      if (act === 'edit') {
+        if (onFleetTab()) { currentId = serverTab(lastBoardTab) ? lastBoardTab : dash.tabs[0].id; syncFleetTab(); }
+        editing = true; work = clone(serverTab(currentId)); selected = null;
+      }
       else if (act === 'done') { if (!(await confirmLeave())) return; editing = false; work = null; selected = null; }
       else if (act === 'revert') { work = clone(serverTab(currentId)); selected = null; }
       else if (act === 'save') { await save(); }
       else if (act === 'export') { exportFile(); return; }
       else if (act === 'import') { $('file').value = ''; $('file').click(); return; }
-      else if (act === 'detach') { detach(serverTab(currentId)); return; }
+      else if (act === 'detach') { detach(onFleetTab() ? FLEET_TAB_DEF : serverTab(currentId)); return; }
       else if (act === 'restore') { restoreDetached(); return; }
       else if (act === 'boards') { if (dashPanel) closeDashPanel(); else openDashPanel(); return; }
-      else if (act === 'fleet') { fleetOpen = !fleetOpen; try { localStorage.setItem(FLEET_OPEN_KEY, fleetOpen ? '1' : '0'); } catch { /* per-viewer only */ } layoutFleet(); renderBar(); return; }
+      else if (act === 'fleet') { setFleetOpen(!fleetIsOpen()); return; }
+      else if (act === 'relay') { if ($('relay-panel').hidden) openRelay(); else $('relay-panel').hidden = true; return; }
       document.body.classList.toggle('editing', editing);
       renderBar(); renderPane(); buildGrid();
     });
@@ -921,16 +1292,15 @@
 
     // ------------------------------------------------------------ grid
 
-    function cellHeight(rows) {
-      return $('stage').clientHeight / rows;
-    }
+    /** The dashboard's square cell, in px. */
+    const cellPx = () => (dash && dash.cell) || (meta && meta.limits.defaultCell) || 72;
 
     function buildGrid() {
       const tab = shown();
       if (!tab) return;
       syncTheme();
       $('empty').style.display = 'none';
-      const key = JSON.stringify([tab.rows, tab.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing]);
+      const key = JSON.stringify([tab.rows, tab.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing, cellPx()]);
       if (grid && key === builtFor) { drawAll(); return; }
       builtFor = key;
       if (grid) grid.destroy(true);
@@ -939,7 +1309,8 @@
       el.id = 'grid';
       $('stage').prepend(el);
       const margin = parseFloat(getComputedStyle(document.body).getPropertyValue('--gap')) || 3;
-      grid = GridStack.init({ column: meta.limits.columns, row: tab.rows, cellHeight: cellHeight(tab.rows), margin, mode: 'float', staticGrid: !editing, animate: false }, el);
+      el.style.width = `${meta.limits.columns * cellPx()}px`;
+      grid = GridStack.init({ column: meta.limits.columns, row: tab.rows, cellHeight: cellPx(), margin, mode: 'float', staticGrid: !editing, animate: false }, el);
       grid.load(tab.widgets.map((w) => ({ id: w.id, x: w.x, y: w.y, w: w.w, h: w.h, minW: meta.kinds[w.kind].min.w, minH: meta.kinds[w.kind].min.h })));
       grid.on('change', (_e, nodes) => {
         if (!editing) return;
@@ -947,7 +1318,7 @@
           const w = work.widgets.find((x) => x.id === n.id);
           if (w) Object.assign(w, { x: n.x, y: n.y, w: n.w, h: n.h });
         }
-        builtFor = JSON.stringify([work.rows, work.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing]);
+        builtFor = JSON.stringify([work.rows, work.widgets.map((w) => [w.id, w.x, w.y, w.w, w.h]), editing, cellPx()]);
         renderBar();
         if (selected) renderPane();
       });
@@ -958,10 +1329,9 @@
     function fit() {
       const tab = shown();
       if (!grid || !tab) return;
-      const ch = cellHeight(tab.rows);
-      grid.cellHeight(ch);
+      const ch = cellPx();
       $('stage').style.setProperty('--ch', `${ch}px`);
-      $('stage').style.setProperty('--cw', `${$('stage').clientWidth / meta.limits.columns}px`);
+      $('stage').style.setProperty('--cw', `${ch}px`);
       shrink($('stage'));
     }
     let fitFrame = 0;
@@ -999,10 +1369,21 @@
         if (grid) for (const el of grid.getGridItems()) { const c = el.querySelector('.grid-stack-item-content'); if (c) c._html = ''; }
       }
     }
+    /** The tab whose theme is in use: the Fleet tab has none of its own, so it takes the theme of
+     * the dashboard tab it was opened from. */
+    const themeTab = () => (onFleetTab() ? serverTab(lastBoardTab) || (dash && dash.tabs[0]) : shown());
     /** The theme of what is on screen, or the theme being edited while the theme editor is open. */
     function syncTheme() {
       if (!themes) return;
-      applyTheme(themeDraft || themeFor(shown()));
+      applyTheme(themeDraft || themeFor(themeTab()));
+    }
+    // A dashboard with no theme stored (or a removed one) shows the default: write it, so the
+    // picker, the file and the page agree.
+    let healingTheme = false;
+    function healTheme() {
+      if (ONLY || healingTheme || !dash || !themes || themeById(dash.theme)) return;
+      healingTheme = true;
+      send({ type: 'dash.setTheme', theme: themes.defaultTheme }, () => { healingTheme = false; });
     }
     const theme = () => ({ base: document.body.dataset.base, bars: document.body.dataset.bars, zeros: document.body.dataset.zeros === 'dim' });
     // Each base's own widget skins and title mark; its shapes, rules and chevrons are the CSS under [data-base].
@@ -1014,6 +1395,7 @@
 
     function onThemes(m) {
       themes = m;
+      healTheme();
       if (themeDraft && !themeById(themeDraft.id)) themeDraft = null;
       syncTheme();
       live('props', renderPane);
@@ -1459,10 +1841,13 @@
     }
 
     // Confirm-group actions: hold the button down for 1.5 s; letting go early cancels.
+    // A finger rolls a little while it holds, so only a move past this many CSS px cancels.
+    const HOLD_SLOP_PX = 24;
     let hold = null;
     const endHold = () => {
       if (!hold) return;
       clearInterval(hold.timer);
+      if (hold.el.hasPointerCapture(hold.pointerId)) hold.el.releasePointerCapture(hold.pointerId);
       hold.el.classList.remove('holding');
       hold.el.style.removeProperty('--hold');
       if (!hold.sent) send({ type: 'hold.end', action: hold.action });
@@ -1475,16 +1860,23 @@
       const el = item.querySelector('.grid-stack-item-content');
       const action = w.bind.id;
       const started = Date.now();
+      // Captured, so a slide just off the widget keeps the hold and the release still reaches it.
+      el.setPointerCapture(e.pointerId);
       send({ type: 'hold.start', action });
       el.classList.add('holding');
-      hold = { el, action, timer: setInterval(() => {
+      hold = { el, action, pointerId: e.pointerId, x: e.clientX, y: e.clientY, timer: setInterval(() => {
         const f = (Date.now() - started) / HOLD_MS;
         el.style.setProperty('--hold', String(Math.min(1, f)));
         if (f >= 1) { hold.sent = true; endHold(); send({ type: 'press', action, confirmed: true }); }
       }, 50) };
     });
-    window.addEventListener('pointerup', endHold);
-    window.addEventListener('pointercancel', endHold);
+    const holdPointer = (e) => hold && e.pointerId === hold.pointerId;
+    window.addEventListener('pointermove', (e) => {
+      if (holdPointer(e) && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP_PX) endHold();
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) window.addEventListener(ev, (e) => { if (holdPointer(e)) endHold(); });
+    // A long touch opens the context menu on Windows.
+    $('stage').addEventListener('contextmenu', (e) => { if (hold || (!editing && e.target.closest('.button.confirm'))) e.preventDefault(); });
 
     // ------------------------------------------------------------ side pane
 
@@ -1550,19 +1942,22 @@
         $('props').innerHTML = `<h2>Tab</h2>
           <label>Name <input id="t-name" maxlength="${meta.limits.label}" value="${esc(work.name)}" /></label>
           <label>Rows <input id="t-rows" type="number" min="${meta.limits.minRows}" max="${meta.limits.maxRows}" value="${work.rows}" /></label>
-          ${themes ? `<label>Theme <select id="t-theme">${themeOptions(work.theme, true)}</select></label>` : ''}
+          ${themes ? `<label>Tab theme <select id="t-theme">${themeOptions(work.theme, true)}</select></label>` : ''}
           <div class="row">
             <button class="btn" data-t="left" type="button" ${i <= 0 || d ? 'disabled' : ''}>Move left</button>
             <button class="btn" data-t="right" type="button" ${i < 0 || i >= dash.tabs.length - 1 || d ? 'disabled' : ''}>Move right</button>
             <button class="btn" data-t="dup" type="button" ${lock}>Duplicate</button>
-            <button class="btn danger" data-t="remove" type="button" ${dash.tabs.length <= 1 || d ? 'disabled' : ''}>Remove</button>
+            <button class="btn danger" data-t="remove" type="button" ${dash.tabs.length <= 1 ? 'disabled title="A dashboard keeps at least one tab"' : 'title="Delete this tab from the dashboard"'}>Delete tab</button>
           </div>
           <div class="row" style="margin-top:6px"><button class="btn" data-t="starter" type="button" ${lock}>Reset starter tab</button></div>
           <p class="note">Click a widget to edit it. Drag to move, drag a corner to resize.</p>
-          ${themes ? `<h2 class="sub">Dashboard theme</h2>
+          ${themes ? `<h2 class="sub">Dashboard</h2>
           <label>Theme <select id="d-theme">${themeOptions(dash.theme, false)}</select></label>
+          <label>Cell size <select id="d-cell">${meta.limits.cells.map((c) => opt(String(c), `${c} px`, c === cellPx())).join('')}</select></label>
           <div class="row"><button class="btn" data-t="themes" type="button">Edit themes</button></div>
-          <p class="note">The dashboard theme is saved at once. A tab's own theme is saved with Save.</p>` : ''}
+          <p class="note">The dashboard theme and cell size are saved at once; cells stay square at that size, and a smaller window scrolls. A tab's own theme is saved with Save.${themeById(work.theme) && work.theme !== dash.theme ? ` This tab shows its own theme, ${esc(themeById(work.theme).name)}.` : ''}</p>` : ''}
+          ${timeSettingsHtml()}
+          ${shipNameHtml()}
           ${tabPlacementAndBezel(serverTab(work.id))}`;
       }
       renderCategories();
@@ -1583,6 +1978,13 @@
         return;
       }
       if (id === 'd-theme') { send({ type: 'dash.setTheme', theme: e.target.value }); return; }
+      if (id === 'd-cell') { send({ type: 'dash.setCell', cell: Number(e.target.value) }); return; }
+      if (id === 'd-zone' || id === 'd-clock') {
+        const time = { zone: $('d-zone').value, clock: $('d-clock').value };
+        // The service pushes the setting to every page once saved; a refusal puts the old one back.
+        send({ type: 'time.set', time }, (r) => { if (!r || (r.problems && r.problems.length)) live('props', renderPane); });
+        return;
+      }
       if (id === 't-theme') {
         if (e.target.value) work.theme = e.target.value; else delete work.theme;
         renderBar(); buildGrid(); return;
@@ -1620,6 +2022,8 @@
       const act = t.dataset.t;
       const saved = serverTab(work.id);
       if (act === 'themes') { openThemePanel(); return; }
+      if (act === 'shipname-save') { if (vals && vals.ship) setShipName(vals.ship.className, $('d-shipname').value.trim() || null); return; }
+      if (act === 'shipname-clear') { setShipName(t.dataset.class, null); return; }
       if (act === 'detach') { if (saved) detach(saved); else notice('Save the new tab before detaching it', 'bad'); }
       else if (act === 'forget') send({ type: 'dash.setPlacement', tab: work.id, placement: null });
       else if (act === 'map') { if (saved) openBezelPanel(work.id); else notice('Save the new tab before mapping bezel buttons', 'bad'); }
@@ -1632,8 +2036,18 @@
         const c = await ask('Reset starter tab', '<p>Put the Main tab back as shipped? Your changes to it are lost; other tabs stay as they are.</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Reset', value: 'reset', cls: 'danger' }]);
         if (c === 'reset') send({ type: 'dash.resetStarter' }, (r) => { if (r && r.tab) { currentId = r.tab.id; work = clone(r.tab); renderBar(); renderPane(); buildGrid(); } });
       } else if (act === 'remove') {
-        const c = await ask('Remove tab', `<p>Remove the tab ${esc(work.name)} and its ${work.widgets.length} widgets? This cannot be undone, except by importing an exported file.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
-        if (c === 'remove') send({ type: 'dash.removeTab', tab: work.id });
+        if (dash.tabs.length <= 1) return;
+        const name = (saved || work).name;
+        const n = (saved || work).widgets.length;
+        const c = await ask('Delete tab', `<p>Delete the tab ${esc(name)} and its ${n} ${n === 1 ? 'widget' : 'widgets'}?${dirty() ? ' Its unsaved changes go too.' : ''} This cannot be undone, except by importing an exported file.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Delete tab', value: 'remove', cls: 'danger' }]);
+        if (c !== 'remove') return;
+        const next = dash.tabs[i + 1] || dash.tabs[i - 1];
+        send({ type: 'dash.removeTab', tab: work.id }, (r) => {
+          if (!r || (r.problems && r.problems.length)) { if (r && r.problems) notice(r.problems[0], 'bad'); return; }
+          notice(`Tab ${name} deleted`, 'ok');
+          const to = (next && serverTab(next.id)) || dash.tabs[0];
+          if (to && editing) { currentId = to.id; lastBoardTab = to.id; work = clone(to); selected = null; renderBar(); renderPane(); buildGrid(); }
+        });
       }
     });
 
@@ -1720,6 +2134,9 @@
       try { return { details: await window.getScreenDetails() }; } catch { return { why: 'Permission to place windows on your displays was not given. You can allow it in the site settings (Window management).' }; }
     }
 
+    // A display is remembered on a dashboard tab; the Fleet tab is not one, so it is chosen each time.
+    const keepHtml = (tab) => (tab.id === FLEET_TAB ? '' : '<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>');
+
     async function detach(tab) {
       if (!tab) return;
       if (APP) return detachInApp(tab);
@@ -1733,7 +2150,7 @@
         `<b>${esc(s.label || 'Unnamed display')}</b><small>${esc(screenText(s))}${s === details.currentScreen ? ', this window' : ''}</small></label>`).join('');
       const body = `<p>Choose the display for ${esc(tab.name)}. It opens in use mode, with the cursor hidden.</p><div class="screens">${list}</div>` +
         `<label class="check"><input type="checkbox" id="d-fs" ${!tab.placement || tab.placement.fullscreen ? 'checked' : ''} /> Full screen</label>` +
-        `<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>` +
+        keepHtml(tab) +
         (tab.placement && wanted < 0 ? `<p class="warn">The remembered display, ${esc(tab.placement.displayLabel)}, is not connected.</p>` : '');
       const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open on display', value: 'open', cls: 'primary' }]);
       if (c !== 'open') return;
@@ -1741,7 +2158,7 @@
       const fs = $('d-fs').checked;
       const s = screens[i];
       if (!openOn(tab, s, fs)) { notice('The browser blocked the new window. Allow pop-ups for this page and try again.', 'bad'); return; }
-      if (!$('d-keep').checked) return;
+      if (!$('d-keep') || !$('d-keep').checked) return;
       const label = (s.label || '').trim();
       // Identity is the display's name; a display with no name, or a name two share, cannot be told apart.
       if (!label) { notice('This display has no name, so the placement cannot be remembered', 'bad'); return; }
@@ -1761,7 +2178,7 @@
         `<b>${esc(d.label || 'Unnamed display')}</b><small>${esc(text(d))}</small></label>`).join('');
       const body = `<p>Choose the display for ${esc(tab.name)}. It opens in use mode, with the cursor hidden, and never takes the focus from the game.</p><div class="screens">${list}</div>` +
         `<label class="check"><input type="checkbox" id="d-fs" ${!tab.placement || tab.placement.fullscreen ? 'checked' : ''} /> Full screen</label>` +
-        `<label class="check"><input type="checkbox" id="d-keep" checked /> Remember this display for the tab</label>` +
+        keepHtml(tab) +
         (tab.placement && wanted < 0 ? `<p class="warn">The remembered display, ${esc(tab.placement.displayLabel)}, is not connected.</p>` : '');
       const c = await ask(`Detach ${tab.name}`, body, [{ text: 'Cancel', value: 'cancel' }, { text: 'Open on display', value: 'open', cls: 'primary' }]);
       if (c !== 'open') return;
@@ -1772,7 +2189,7 @@
       if (shared.includes(d.label)) { notice(`Two displays are named ${label}, so the app cannot tell them apart`, 'bad'); return; }
       const r = await APP.request('open', { tab: tab.id, displayLabel: d.label, fullscreen: fs });
       if (!r.ok) { notice(r.text, 'bad'); return; }
-      if ($('d-keep').checked) send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
+      if ($('d-keep') && $('d-keep').checked) send({ type: 'dash.setPlacement', tab: tab.id, placement: { displayLabel: label.slice(0, meta.limits.displayLabel), fullscreen: fs } });
     }
 
     async function detachByHand(tab, why) {
@@ -1865,7 +2282,7 @@
       let shipHtml;
       if (!ship) shipHtml = '<p class="note">Not in a ship. The ship you get into shows here, with its dashboard.</p>';
       else {
-        shipHtml = `<p class="ship"><b>${esc(ship.key)}</b><small>${esc(ship.className)}</small></p>`;
+        shipHtml = `<p class="ship"><b>${esc(ship.name)}</b><small>${esc(ship.className)}</small></p>`;
         if (match && match.id === board.id) shipHtml += `<p class="note">${esc(match.name)} is this ship's dashboard and is on screen.</p>`;
         else if (match) shipHtml += `<div class="row"><button class="btn primary" data-dp="select" data-id="${esc(match.id)}" type="button">Show ${esc(match.name)}</button></div>`;
         else {
@@ -1876,7 +2293,7 @@
       }
       const rows = list.map((b) => {
         const on = b.id === board.id;
-        const what = b.generic ? 'Generic: for any ship without its own' : b.ship ? `${b.ship.manufacturer ? `${b.ship.manufacturer} / ` : ''}${b.ship.model}` : 'No ship';
+        const what = b.generic ? 'Generic: for any ship without its own' : b.ship ? b.shipName || b.ship.model : 'No ship';
         const facts = `${what} · ${b.tabs} ${b.tabs === 1 ? 'tab' : 'tabs'}${b.theme ? ` · ${themeName(b.theme)}` : ''}`;
         if (renamingBoard === b.id) {
           return `<div class="drow on"><span class="what"><input id="dp-name" maxlength="${meta.limits.label}" value="${esc(b.name)}" aria-label="Dashboard name" /><small>${esc(facts)}</small></span>` +
@@ -1894,7 +2311,7 @@
         `<section><label class="check"><input type="checkbox" id="dp-switch" ${boards.switchOnShipChange ? 'checked' : ''} /> Switch dashboard when I change ship</label>` +
         '<p class="note">On: a different ship, recognised for 2 s, shows its own dashboard, or the generic one. Getting out keeps the dashboard on screen, and a switch waits for a running sequence to end. Off: the ship\'s dashboard is offered above.</p></section>' +
         '<section><h4>Functions a ship lacks</h4><p class="note">Controls for what the ship does not report are greyed, learned per ship class and game build. Reset to learn again.</p>' +
-        `<div class="row">${ship ? `<button class="btn" data-dp="reset-ship" type="button">Reset for ${esc(ship.model)}</button>` : ''}<button class="btn" data-dp="reset-all" type="button">Reset for every ship</button></div></section>` +
+        `<div class="row">${ship ? `<button class="btn" data-dp="reset-ship" type="button">Reset for ${esc(ship.name)}</button>` : ''}<button class="btn" data-dp="reset-all" type="button">Reset for every ship</button></div></section>` +
         (boards.fileProblem ? `<p class="warn">${esc(boards.fileProblem)}</p>` : '') +
         '<div class="row end"><button class="btn primary" data-dp="done" type="button">Done</button></div>';
       el.hidden = false;
@@ -1926,7 +2343,7 @@
         const c = await ask('Remove dashboard', `<p>Remove the dashboard ${esc(target.name)} and its ${target.tabs} ${target.tabs === 1 ? 'tab' : 'tabs'}? This cannot be undone, except by importing an exported file.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
         if (c === 'remove') send({ type: 'dash.remove', dashboard: id });
       } else if (act === 'reset-ship' && ship) {
-        send({ type: 'support.reset', className: ship.className }, () => notice(`Learning ${ship.model} again`, 'ok'));
+        send({ type: 'support.reset', className: ship.className }, () => notice(`Learning ${ship.name} again`, 'ok'));
       } else if (act === 'reset-all') {
         const c = await ask('Reset for every ship', '<p>Forget which functions every ship lacks? Each ship is learned again the next time you are in it (10 s).</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Reset', value: 'reset', cls: 'danger' }]);
         if (c === 'reset') send({ type: 'support.reset' }, () => notice('Learning every ship again', 'ok'));
@@ -1968,7 +2385,8 @@
 
     function themeOptions(cur, forTab) {
       const dashName = (themeById(dash.theme) || themeById(themes.defaultTheme)).name;
-      const head = forTab ? opt('', `Dashboard theme (${dashName})`, !themeById(cur)) : '';
+      // The dashboard's own select is further down; naming this option after it read as one dropdown twice.
+      const head = forTab ? opt('', `Same as the dashboard (${dashName})`, !themeById(cur)) : '';
       const sel = forTab ? cur : (themeById(cur) ? cur : themes.defaultTheme);
       const group = (label, list) => (list.length ? `<optgroup label="${esc(label)}">${list.map((t) => opt(t.id, t.name, t.id === sel)).join('')}</optgroup>` : '');
       return head + group('Built in', themes.builtIn) + group('Yours', themes.user);
@@ -1982,7 +2400,7 @@
     const themeDirty = () => themeDraft && !isBuiltInTheme(themeDraft.id) && JSON.stringify(themeDraft) !== JSON.stringify(themeById(themeDraft.id));
 
     function selectTheme(id) {
-      const t = themeById(id) || themeFor(shown());
+      const t = themeById(id) || themeFor(themeTab());
       themeEdit = { sel: t.id };
       themeDraft = clone(t);
       syncTheme(); drawAll(); renderThemePanel();
@@ -1991,7 +2409,7 @@
       if (!themes) return;
       $('theme-panel').hidden = false;
       document.body.classList.add('theming');
-      selectTheme(themeFor(shown()).id);
+      selectTheme(themeFor(themeTab()).id);
       requestAnimationFrame(fit);
     }
     /** A theme the service just made or saved, ahead of its themes push. */
@@ -2073,7 +2491,7 @@
       } else if (act === 'remove') {
         const t = themeById(id);
         const c = await ask('Remove theme', `<p>Remove the theme ${esc(t.name)}? Tabs and the dashboard using it go back to the dashboard theme, then RSI.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'danger' }]);
-        if (c === 'remove') send({ type: 'theme.remove', theme: id }, (r) => { if (r && !r.problems.length && themeDraft && themeDraft.id === id) selectTheme(themeFor(shown()).id); });
+        if (c === 'remove') send({ type: 'theme.remove', theme: id }, (r) => { if (r && !r.problems.length && themeDraft && themeDraft.id === id) selectTheme(themeFor(themeTab()).id); });
       }
     });
     $('theme-panel').addEventListener('input', (e) => {
@@ -2103,39 +2521,95 @@
       themeChanged();
     });
 
-    // ------------------------------------------------------------ fleet panel (Rust service only, draft)
+    // ------------------------------------------------------------ fleet panel (Rust service only)
 
-    // The service pushes `fleet` only when it runs a fleet (today only the --fleet-demo mock peers).
-    let fleet = null, fleetBuilt = '', fleetDetail = null, fleetDrag = null;
+    // The service pushes `fleet` to a dashboard page after `dash.get`: the connection to a fleet
+    // server, this player's key, what they send, and the cards in the event's structure (or the
+    // viewer's own groups when the server sends none).
+    let fleet = null, fleetDetail = null, fleetDrag = null;
     const FLEET_OPEN_KEY = 'sc-dash-fleet-open';
-    let fleetOpen = (() => { try { return localStorage.getItem(FLEET_OPEN_KEY) !== '0'; } catch { return true; } })();
-    const fleetShown = () => Boolean(fleet) && !ONLY;
+    // Open by default once a fleet has been joined; the viewer's own choice wins.
+    let fleetOpenPref = (() => { try { const v = localStorage.getItem(FLEET_OPEN_KEY); return v === null ? null : v !== '0'; } catch { return null; } })();
+    const fleetIsOpen = () => (fleetOpenPref === null ? Boolean(fleet && fleet.link.fleets.length) : fleetOpenPref);
+    const setFleetOpen = (on) => { fleetOpenPref = on; try { localStorage.setItem(FLEET_OPEN_KEY, on ? '1' : '0'); } catch { /* per-viewer only */ } layoutFleet(); renderBar(); };
+    const fleetShown = () => Boolean(fleet) && !ONLY && !onFleetTab();
+    const fleetTabShown = () => Boolean(fleet) && onFleetTab();
+    const fleetDown = '<div class="fhead"><div class="ftitle"><h2>Fleet</h2></div></div><div class="fbody"><p class="fempty">Connecting to Hardpoint...</p></div>';
+    const fleetViews = () => [$('fleet'), $('fleet-full')];
     const fleetMember = (id) => fleet && fleet.members.find((m) => m.member === id);
-    const fleetGroupName = (id) => { const g = fleet && fleet.groups.find((x) => x.id === id); return g ? g.name : 'Ungrouped'; };
+    const fleetGroupName = (id) => { const g = fleet && fleet.groups.find((x) => x.id === id); return g ? g.name : (fleet && fleet.layout === 'event' ? 'Unassigned' : 'Ungrouped'); };
+    const fleetEvent = () => fleet && fleet.layout === 'event';
+    const admiralOn = () => fleet.view.admiral && fleet.admiralAllowed;
     const STATUS_TEXT = { UP: 'Up', DOWNED: 'Downed', DEAD: 'Dead', RESPAWNED: 'Respawned', OFFLINE: 'Offline', UNKNOWN: 'No status' };
+    // One glyph per role, by fleet-proto's role names (Role::icon is the name with - for _): a star
+    // for the admiral, chevrons for commanders, shapes for a ship's or squad's seats.
+    const ROLE = { admiral: ['★', 'Admiral'], fleet_commander: ['∧∧', 'Fleet Commander'], wing_commander: ['∧∧', 'Wing Commander'], ground_commander: ['∧∧', 'Ground Commander'],
+      squadron_commander: ['∧', 'Squadron Commander'], squad_commander: ['∧', 'Squad Commander'], captain: ['◆', 'Captain'],
+      pilot: ['▲', 'Pilot'], copilot: ['△', 'Copilot'], crew: ['●', 'Crew'], soldier: ['■', 'Soldier'] };
+    const CONSENT_GROUPS = [['ship', 'Ship status'], ['character', 'Character status'], ['detail', 'Detail (shield faces, power, flight)']];
     // Short labels as on the in-game HUD, so two bars fit side by side in every theme's font.
     const FLEET_BARS = [['ship.shields', 'SHLD', 'Shields'], ['ship.hull', 'HULL', 'Hull'], ['ship.fuel', 'H2', 'Hydrogen fuel'], ['ship.quantum', 'QT', 'Quantum fuel'], ['char.health', 'HP', 'Health'], ['char.oxygen', 'O2', 'Oxygen']];
-    const updatedAgo = (ms) => { const s = Math.floor(ms / 1000); return s < 60 ? `updated ${s} s ago` : `updated ${Math.floor(s / 60)} min ago`; };
+    // The age is the service's; the clock time is worked out here, to the second so pushes do not flicker it.
+    const updatedAt = (ms) => fmtWhen(Math.round((Date.now() - ms) / 1000) * 1000);
+    const updatedAgo = (ms) => { const s = Math.floor(ms / 1000); return `${s < 60 ? `updated ${s} s ago` : `updated ${Math.floor(s / 60)} min ago`} · ${updatedAt(ms)}`; };
     const chip = (st) => `<span class="chip" data-st="${esc(st)}">${esc(STATUS_TEXT[st] || st)}</span>`;
+    const roleIcons = (roles) => (roles || []).map((r) => ROLE[r] ? `<span class="role" data-role="${esc(r)}" title="${esc(ROLE[r][1])}" aria-label="${esc(ROLE[r][1])}">${ROLE[r][0]}</span>` : '').join('');
+    const youTag = (m) => (m.me ? '<span class="you" title="Your card, as others receive it">YOU</span>' : '');
+    const myRoles = () => [...new Set((fleet.link.grants || []).map((g) => g.role))].filter((r) => ROLE[r]).sort((a, b) => Object.keys(ROLE).indexOf(a) - Object.keys(ROLE).indexOf(b));
+    /** A role from the tree ({ role, label, icon }): its glyph and its label. */
+    const roleTag = (t, withLabel) => (t ? `<span class="role" data-role="${esc(t.role)}" title="${esc(t.label)}" aria-label="${esc(t.label)}">${(ROLE[t.role] || ['?'])[0]}</span>${withLabel ? `<span class="rlabel">${esc(t.label)}</span>` : ''}` : '');
 
     function onFleet(m) {
       const first = !fleet;
       fleet = m;
-      if (first) { if (dash) live('bar', renderBar); layoutFleet(); }
-      live('fleet', renderFleet);
+      if (dash) live('bar', renderBar);
+      if (first && onFleetTab()) syncFleetTab();
+      if (first || document.body.classList.contains('fleet-on') !== (fleetShown() && fleetIsOpen())) layoutFleet();
+      live('fleet', () => renderFleetView($('fleet'), false));
+      live('fleet-full', () => renderFleetView($('fleet-full'), true));
       if (fleetDetail) live('fleet-detail', renderFleetDetail);
+      if (!$('fleet-join').hidden) live('fleet-join', renderFleetJoin);
+      if (!$('fleet-host').hidden) live('fleet-host', renderFleetHost);
+    }
+
+    /** Into or out of the Fleet tab: the stage and the panel give way to the full view. */
+    function syncFleetTab() {
+      document.body.classList.toggle('fleet-tab', onFleetTab());
+      if (onFleetTab()) syncTheme();
+      layoutFleet();
+      renderFleet();
     }
 
     function layoutFleet() {
-      document.body.classList.toggle('fleet-on', fleetShown() && fleetOpen);
+      document.body.classList.toggle('fleet-on', fleetShown() && fleetIsOpen());
       cancelAnimationFrame(fitFrame);
       fitFrame = requestAnimationFrame(fit);
     }
 
     function fleetTools() {
       if (!fleetShown()) return '';
-      return `${fleet.demo ? '<span class="demo-flag" title="Mock fleet peers replayed from telemetry recordings; nobody is connected">DEMO: mock peers from recordings</span>' : ''}` +
-        `<button class="btn ${fleetOpen ? 'on' : ''}" data-do="fleet" type="button" title="Show or hide the fleet panel">Fleet</button>`;
+      const st = fleet.link.state;
+      const dot = st === 'none' ? '' : `<span class="fdot" data-link="${esc(st)}" aria-hidden="true"></span>`;
+      return `<button class="btn ${fleetIsOpen() ? 'on' : ''}" data-do="fleet" type="button" title="Show or hide the fleet panel">${dot}Fleet</button>`;
+    }
+
+    /** The connection line: where, the state, and what to do about it. */
+    function fleetLinkLine() {
+      const l = fleet.link;
+      const where = l.event ? l.event.name : l.fleet ? l.fleet.address : '';
+      const text = {
+        none: 'Not in a fleet',
+        connecting: l.choices ? `Choose an event on ${l.server || where}` : l.attempt ? `Connecting to ${where} (attempt ${l.attempt + 1})` : `Connecting to ${where}`,
+        online: where,
+        offline: `Fleet offline${l.retryMs ? `, trying again in ${Math.ceil(l.retryMs / 1000)} s` : ''}`,
+        refused: `Refused: ${l.problem || 'by the server'}`,
+      }[l.state];
+      const p2p = l.fleet && !l.fleet.hosted;
+      const why = (l.state === 'online' && p2p && l.server ? `<small>Host ${esc(l.server)}, key ${esc(l.fleet.fingerprint)}</small>` : '') +
+        (l.state === 'offline' && l.problem ? `<small>${esc(l.problem)}</small>` : '') +
+        (l.state === 'refused' && l.hint ? `<small class="fhint">${esc(l.hint)}</small>` : '');
+      const roles = l.state === 'online' ? roleIcons(myRoles()) : '';
+      return `<div class="flink" data-link="${esc(l.state)}"><span class="fdot" aria-hidden="true"></span><span class="ftext">${esc(text)}${why}</span>${roles}</div>`;
     }
 
     function fleetBar(f, label, title) {
@@ -2144,79 +2618,239 @@
       return `<span class="l" title="${esc(title || label)}">${esc(label)}</span><span class="fbar t-${esc(f.tone)}"><i style="width:${w}%"></i></span><span class="v t-${esc(f.tone)}">${esc(f.text)}</span>`;
     }
 
-    function fleetCardInner(m) {
+    /** A card's extras from its place in the tree, kept on the element so a push can redraw it. */
+    const placeOf = (el) => (el ? { seat: el.dataset.seat ? { role: el.dataset.seat, label: (ROLE[el.dataset.seat] || [, el.dataset.seat])[1] } : null, notAboard: el.dataset.na === '1' } : {});
+    const placeAttrs = (seat, notAboard) => `${seat ? ` data-seat="${esc(seat.role.role)}"` : ''}${notAboard ? ' data-na="1"' : ''}`;
+    /** The event's page in the CIC portal, where seats, roles and units are changed; none without the portal's address. */
+    const cicLink = (cls, title) => (fleet.eventUrl ? `<a class="btn ${cls}" data-f="cic" href="${esc(fleet.eventUrl)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">Open in CIC</a>` : '');
+    const seatCic = (place) => (place && place.seat && fleet.commander ? cicLink('mv', 'Change seats and leads in the CIC portal') : '');
+
+    function fleetCardInner(m, place = {}) {
+      if (m.ship) return shipCardInner(m);
       const f = m.fields;
       const shown = (x) => x && x.text !== DASH;
       const ship = m.sharing.ship ? [f['ship.name'], f['ship.mode']].filter(shown).map((x) => x.text).join(' · ') || 'Not in a ship' : 'No ship status shared';
       const where = shown(f['char.activity']) ? f['char.activity'] : f['ship.aboard'];
       // A dash bar says nothing on a small card (out of a ship, say); the detail view lists every field.
       const bars = FLEET_BARS.filter(([id]) => shown(f[id])).map(([id, label, title]) => fleetBar(f[id], label, title)).join('');
-      const facts = [['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons']].filter(([id]) => shown(f[id]))
+      const facts = [['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons'], ['ship.seat', 'Seat'], ['ship.crew_role', 'Crew role']].filter(([id]) => shown(f[id]))
         .map(([id, label]) => `<span><small>${esc(label)}</small><b class="t-${esc(f[id].tone)}">${esc(f[id].text)}</b></span>`).join('');
-      return `<div class="frow"><span class="who">${esc(m.handle)}</span>${chip(m.status)}</div>` +
+      const seat = place.seat ? `<span class="tag" title="Seat">${roleTag(place.seat, true)}</span>` : '';
+      const na = place.notAboard ? '<span class="na" title="This card names another ship than the ship card: maybe not aboard">NOT ABOARD?</span>' : '';
+      return `<div class="frow"><span class="who">${esc(m.handle)}</span>${roleIcons(m.roles)}${youTag(m)}${seat}${seatCic(place)}${chip(m.status)}</div>` +
+        (na ? `<div class="frow">${na}</div>` : '') +
         `<div class="frow"><span class="sub">${esc(ship)}</span>${where ? `<span class="tag">${esc(where.text)}</span>` : ''}</div>` +
+        (bars ? `<div class="fbars">${bars}</div>` : '') +
+        (facts ? `<div class="ffacts">${facts}</div>` : '') +
+        (m.ageMs === undefined ? '' : `<div class="fage">${esc(updatedAgo(m.ageMs))}</div>`);
+    }
+
+    /** A relay-built ship card: the ship's name, where its fields come from, and its bars. */
+    function shipCardInner(m) {
+      const f = m.fields;
+      const shown = (x) => x && x.text !== DASH;
+      const bars = FLEET_BARS.filter(([id]) => id.startsWith('ship.') && shown(f[id])).map(([id, label, title]) => fleetBar(f[id], label, title)).join('');
+      const facts = [['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons'], ['ship.class', 'Class']].filter(([id]) => shown(f[id]))
+        .map(([id, label]) => `<span><small>${esc(label)}</small><b class="t-${esc(f[id].tone)}">${esc(f[id].text)}</b></span>`).join('');
+      const mode = shown(f['ship.mode']) ? `<span class="tag">${esc(f['ship.mode'].text)}</span>` : '';
+      return `<div class="frow"><span class="shiptag">SHIP</span><span class="who">${esc(m.handle)}</span>${mode}</div>` +
+        `<div class="frow"><span class="sub src" data-kind="${esc(m.source ? m.source.kind : '')}">${esc(m.sourceLabel || '')}</span></div>` +
         (bars ? `<div class="fbars">${bars}</div>` : '') +
         (facts ? `<div class="ffacts">${facts}</div>` : '') +
         `<div class="fage">${esc(updatedAgo(m.ageMs))}</div>`;
     }
 
-    function admiralInner(m) {
+    function admiralInner(m, place = {}) {
+      if (m.ship) {
+        const hull = m.fields['ship.hull'];
+        return `${chip(m.status)}<span class="who"><span class="nm"><span class="shiptag">SHIP</span><b>${esc(m.handle)}</b></span><small>${esc(m.sourceLabel || '')}</small></span>` +
+          `<span class="hp">${hull && hull.text !== DASH ? `<span class="t-${esc(hull.tone)}">${esc(hull.text)}</span><span class="fbar t-${esc(hull.tone)}"><i style="width:${(hull.fraction || 0) * 100}%"></i></span>` : `<span class="t-unknown">HULL ${DASH}</span>`}</span>` +
+          `<span class="age" title="${esc(`Updated ${updatedAt(m.ageMs)}`)}">${esc(`${Math.floor(m.ageMs / 1000)} s`)}</span>`;
+      }
       const h = m.fields['char.health'];
       const ship = m.fields['ship.name'];
-      return `${chip(m.status)}<span class="who"><b>${esc(m.handle)}</b><small>${esc(fleetGroupName(m.group))}${ship && ship.text !== DASH ? ` · ${esc(ship.text)}` : ''}</small></span>` +
+      const where = place.seat ? `${place.seat.label}${ship && ship.text !== DASH ? `, ${ship.text}` : ''}` : ship && ship.text !== DASH ? ship.text : fleetGroupName(m.group);
+      return `${chip(m.status)}<span class="who"><span class="nm"><b>${esc(m.handle)}</b>${place.seat ? roleTag(place.seat) : ''}${roleIcons(m.roles)}${youTag(m)}${place.notAboard ? '<span class="na" title="Maybe not aboard">?</span>' : ''}</span><small>${esc(where)}</small>${seatCic(place)}</span>` +
         `<span class="hp">${h ? `<span class="t-${esc(h.tone)}">${esc(h.text)}</span><span class="fbar t-${esc(h.tone)}"><i style="width:${(h.fraction || 0) * 100}%"></i></span>` : '<span class="t-unknown">HP ' + DASH + '</span>'}</span>` +
-        `<span class="age">${esc(`${Math.floor(m.ageMs / 1000)} s`)}</span>`;
+        `<span class="age" title="${esc(`Updated ${updatedAt(m.ageMs)}`)}">${esc(`${Math.floor(m.ageMs / 1000)} s`)}</span>`;
     }
 
-    /** The panel's shape: rebuilt only when groups, order or states change, so a flashing card keeps its beat. */
+    const rollHtml = (r) => (r.downed ? esc(r.text).replace(/(\d+ downed)/, '<b>$1</b>') : esc(r.text));
+
+    /** One group, as cards or as condensed admiral rows. */
+    function fleetGroupHtml(g, i, personal, condensed) {
+      const named = g.id !== null;
+      const last = fleet.groups.length - 2;
+      const acts = personal && named && !condensed ? `<span class="acts"><button class="btn" data-f="up" data-g="${esc(g.id)}" type="button" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>` +
+        `<button class="btn" data-f="down" data-g="${esc(g.id)}" type="button" title="Move down" ${i >= last ? 'disabled' : ''}>↓</button>` +
+        `<button class="btn" data-f="rename" data-g="${esc(g.id)}" type="button" title="Rename">Rename</button>` +
+        `<button class="btn danger" data-f="remove" data-g="${esc(g.id)}" type="button" title="Remove the group; its members go to Ungrouped">×</button></span>` : '<span></span>';
+      const collapsed = personal && g.collapsed;
+      const rows = g.members.map((id) => { const m = fleetMember(id); if (!m) return '';
+        return condensed ? `<div class="arow" data-member="${esc(id)}" data-st="${esc(m.status)}">${admiralInner(m)}</div>`
+          : `<div class="fcard" ${personal ? 'draggable="true"' : ''} data-member="${esc(id)}" data-st="${esc(m.status)}">${fleetCardInner(m)}</div>`; }).join('');
+      const empty = personal && !condensed ? '<div class="hint">Drag cards here</div>' : '<div class="hint">Nobody here yet</div>';
+      const cards = collapsed ? '' : `<div class="${condensed ? 'alist' : 'fcards'}">${rows || empty}</div>`;
+      return `<section class="fgroup${condensed ? ' condensed' : ''}" data-gid="${esc(g.id === null ? '' : g.id)}"><div class="fgroup-h">` +
+        `<button class="chev" data-f="collapse" data-g="${esc(g.id === null ? '' : g.id)}" type="button" title="${collapsed ? 'Expand' : 'Collapse'}" ${personal && named ? '' : 'disabled'}>${collapsed ? '▸' : '▾'}</button>` +
+        `<span class="name">${esc(g.name)}${g.leaders && g.leaders.length ? `<small class="lead" title="Lead">${ROLE.squad_commander[0]} ${esc(g.leaders.map((k) => (fleetMember(k) || {}).handle).filter(Boolean).join(', ') || 'leader not here')}</small>` : ''}</span>` +
+        `${acts}<span class="roll">${rollHtml(g.rollup)}</span></div>${cards}</section>`;
+    }
+
+    // ------------------------------------------------------------ fleet: the event's unit tree
+
+    /** A member in the tree: their card when one came, else a row that says why not. */
+    function seatHtml(p, seat, notAboard, condensed) {
+      const m = fleetMember(p.member);
+      if (m) {
+        const attrs = placeAttrs(seat, notAboard);
+        const place = placeOf({ dataset: { seat: seat && seat.role.role, na: notAboard ? '1' : '' } });
+        return condensed ? `<div class="arow" data-member="${esc(p.member)}" data-st="${esc(m.status)}"${attrs}>${admiralInner(m, place)}</div>`
+          : `<div class="fcard" data-member="${esc(p.member)}" data-st="${esc(m.status)}"${attrs}>${fleetCardInner(m, place)}</div>`;
+      }
+      const why = p.connected ? 'no card yet' : 'not connected yet';
+      return `<div class="fnone" data-st="OFFLINE"><span class="who">${esc(p.handle)}</span>${seat ? `<span class="tag">${roleTag(seat.role, true)}</span>` : ''}<span class="why">${esc(why)}</span>` +
+        `${seat ? seatCic({ seat }) : ''}</div>`;
+    }
+    const leadLine = (role, people) => (people.length ? `<small class="lead">${roleTag(role, true)} ${esc(people.map((p) => p.handle).join(', '))}</small>` : '');
+
+    /** One unit and everything under it; a unit above the viewer's own shows its name and lead only. */
+    function unitHtml(u, condensed) {
+      const loose = u.leads.filter((p) => !p.seated && fleetMember(p.member)).map((p) => seatHtml(p, null, false, condensed)).join('');
+      const ship = u.shipCard ? seatHtml({ member: u.shipCard, handle: u.name, connected: true }, null, false, condensed) : '';
+      const seats = u.seats.map((s) => seatHtml(s, s, s.notAboard, condensed)).join('');
+      const inner = loose + ship + seats;
+      const kids = u.units.map((c) => unitHtml(c, condensed)).join('');
+      const roll = u.open && (u.seats.length || u.units.length) ? `<span class="roll">${rollHtml(u.rollup)}</span>` : '';
+      return `<section class="funit${condensed ? ' condensed' : ''}" data-kind="${esc(u.kind)}" data-uid="${esc(u.id)}"${u.fighter ? ' data-fighter="1"' : ''}${u.open ? '' : ' data-closed="1"'}>` +
+        `<div class="funit-h"><span class="kind">${esc(u.kindLabel)}</span><span class="name">${esc(u.name)}</span>${leadLine(u.leadRole, u.leads)}${roll}</div>` +
+        (inner ? `<div class="${condensed ? 'alist' : 'fcards'}">${inner}</div>` : '') +
+        (kids ? `<div class="fkids">${kids}</div>` : '') +
+        (u.open && !inner && !kids ? '<div class="fcards"><div class="hint">Nobody here yet</div></div>' : '') + '</section>';
+    }
+
+    /** The Unassigned bucket: names and whether each is connected, never card data. */
+    function unassignedHtml() {
+      if (!fleet.unassigned.length) return '';
+      const rows = fleet.unassigned.map((p) => `<li><span class="who">${esc(p.handle)}</span><span class="why" data-on="${p.connected ? '1' : '0'}">${p.connected ? 'connected' : 'not connected yet'}</span>` +
+        `${fleet.commander ? cicLink('mv', 'Place members in the CIC portal') : ''}</li>`).join('');
+      return `<section class="funassigned"><div class="funit-h"><span class="name">Unassigned</span><span class="roll">${fleet.unassigned.length} waiting for a place</span></div><ul>${rows}</ul></section>`;
+    }
+
+    function treeHtml(condensed) {
+      const t = fleet.tree;
+      if (!fleet.placed) {
+        const mine = fleet.members.find((m) => m.me);
+        return `<div class="fempty"><p>You are Unassigned in ${esc(t.name)}. The admiral or a commander places you; until then your card goes to nobody else.</p></div>` +
+          (mine ? `<div class="fcards"><div class="fcard" data-member="${esc(mine.member)}" data-st="${esc(mine.status)}">${fleetCardInner(mine)}</div></div>` : '');
+      }
+      const adm = t.admiral;
+      const admCard = adm && !adm.seated && fleetMember(adm.member) ? `<div class="${condensed ? 'alist' : 'fcards'}">${seatHtml(adm, null, false, condensed)}</div>` : '';
+      return `<section class="fevent"><div class="funit-h"><span class="kind">Event</span><span class="name">${esc(t.name)}</span>${adm ? leadLine(t.admiralRole, [adm]) : ''}<span class="roll">${rollHtml(t.rollup)}</span></div>${admCard}</section>` +
+        t.units.map((u) => unitHtml(u, condensed)).join('') + unassignedHtml();
+    }
+
+    function chooserHtml() {
+      const l = fleet.link;
+      if (!l.choices.length) return '<div class="fempty"><p>None of your events is open yet. This list updates when one opens.</p></div>';
+      return '<div class="fchoose"><p>You are in several events open now, pick one.</p><ul>' + l.choices.map((e) =>
+        `<li><span class="fl"><b>${esc(e.name)}</b>${e.role ? `<small>${roleTag({ role: e.role, label: (ROLE[e.role] || [, e.role])[1] }, true)}</small>` : '<small>Unassigned</small>'}</span>` +
+        `<button class="btn primary" data-f="choose" data-e="${esc(e.id)}" type="button">Join</button></li>`).join('') + '</ul></div>';
+    }
+
     function renderFleet() {
-      const el = $('fleet');
-      if (!fleetShown()) { el.innerHTML = ''; fleetBuilt = ''; return; }
+      renderFleetView($('fleet'), false);
+      renderFleetView($('fleet-full'), true);
+    }
+
+    /** The panel, or the Fleet tab when `full`: one view, rebuilt only when groups, order or
+     * states change, so a flashing card keeps its beat. */
+    function renderFleetView(el, full) {
+      if (!(full ? fleetTabShown() : fleetShown())) { el.innerHTML = full && onFleetTab() ? fleetDown : ''; el._built = ''; return; }
       if (fleetDrag) return;
-      const v = fleet.view;
-      const key = JSON.stringify([v.admiral, fleet.groups.map((g) => [g.id, g.name, g.collapsed, g.members, g.rollup.text]), fleet.members.map((m) => [m.member, m.status]), fleet.view.groups.length]);
-      if (key === fleetBuilt) {
+      const v = fleet.view, l = fleet.link;
+      const condensed = admiralOn();
+      const boarded = full && fbOn();
+      const key = JSON.stringify([boarded, condensed, fleet.layout, fleet.admiralAllowed, fleet.sharing, l.state, l.event, l.retryMs, l.problem, l.hint, l.choices, l.grants, l.fleets.length,
+        fleet.tree, fleet.unassigned, fleet.placed, fleet.commander, fleet.eventUrl, fleet.host && fleet.host.hosting, canHost(),
+        fleet.wings.map((w) => [w.id, w.name, w.rollup.text, w.groups.map((g) => [g.id, g.name, g.collapsed, g.members, g.leaders, g.rollup.text])]),
+        fleet.members.map((m) => [m.member, m.status, m.roles]), v.groups.length]);
+      if (key === el._built) {
         for (const c of el.querySelectorAll('[data-member]')) {
+          if (c.closest('.fboard')) continue;
           const m = fleetMember(c.dataset.member);
           if (!m) continue;
-          const html = v.admiral ? admiralInner(m) : fleetCardInner(m);
+          const html = condensed ? admiralInner(m, placeOf(c)) : fleetCardInner(m, placeOf(c));
           if (c._html !== html) { c._html = html; c.innerHTML = html; }
           markFleetSel(c);
         }
+        if (full) fbRender();
         return;
       }
-      fleetBuilt = key;
+      el._built = key;
       const r = fleet.rollup;
-      const head = `<div class="fhead"><div class="ftitle"><h2>Fleet</h2><button class="btn x" data-f="hide" type="button" title="Hide the fleet panel">Hide</button></div>` +
-        `<div class="froll">${esc(`${r.total} ${r.total === 1 ? 'member' : 'members'}: ${r.text}`)}</div>` +
-        (fleet.demo ? '<span class="demo-flag">DEMO: mock peers from recordings</span>' : '') +
-        `<div class="ftools"><button class="btn" data-f="add" type="button" ${v.groups.length >= fleet.limits.groups ? 'disabled' : ''}>+ Group</button>` +
-        `<button class="btn ${v.admiral ? 'on' : ''}" data-f="admiral" type="button" title="Every member in one list, by state, across groups">Admiral view</button>` +
-        '<button class="btn" data-f="fields" type="button" title="Choose what the cards show">Card fields</button></div></div>';
+      const personal = fleet.layout === 'personal';
+      const joined = l.state !== 'none';
+      const settled = joined && !l.choices;
+      const head = `<div class="fhead"><div class="ftitle"><h2>Fleet</h2>` +
+        `<span class="share" data-on="${fleet.sharing ? '1' : '0'}" title="${fleet.sharing ? 'Your card is going out with the fields you chose' : 'You send no status: choose fields in What I send'}">${fleet.sharing ? 'Sharing on' : 'Sharing off'}</span>` +
+        (full ? '' : '<button class="btn x" data-f="hide" type="button" title="Hide the fleet panel">Hide</button>') + '</div>' +
+        fleetLinkLine() +
+        (settled ? `<div class="froll">${esc(`${r.total} ${r.total === 1 ? 'member' : 'members'}: ${r.text}`)}</div>` : '') +
+        `<div class="ftools"><button class="btn ${joined ? '' : 'primary'}" data-f="join" type="button" title="Join a fleet with an invite, or connect again">${joined ? 'Fleets' : 'Join a fleet'}</button>` +
+        '<button class="btn" data-f="consent" type="button" title="Choose what your card sends, field by field">What I send</button>' +
+        (canHost() ? `<button class="btn ${fleet.host.hosting ? 'on' : ''}" data-f="host" type="button" title="Host a peer-to-peer fleet from this PC">${fleet.host.hosting ? 'Hosting' : 'Host'}</button>` : '') +
+        (fleet.admiralAllowed && settled ? `<button class="btn ${condensed ? 'on' : ''}" data-f="admiral" type="button" title="The same groups, condensed: one row per member, roll-ups per group and wing">Admiral view</button>` : '') +
+        '<button class="btn" data-f="fields" type="button" title="Choose what the cards show">Card fields</button>' +
+        (settled ? cicLink('', 'The event in the CIC portal: seats, roles and units are changed there') : '') +
+        (personal && settled ? `<button class="btn" data-f="add" type="button" ${v.groups.length >= fleet.limits.groups ? 'disabled' : ''}>+ Group</button>` : '') + '</div></div>';
       let body;
-      if (!fleet.members.length) body = '<p class="fempty">No member cards yet.</p>';
-      else if (v.admiral) {
-        const n = (k) => fleet.members.filter((m) => m.status === k).length;
-        body = `<div class="ahead"><span><b>${n('DOWNED')}</b> downed</span><span><b>${n('DEAD')}</b> dead</span><span><b>${n('UP') + n('RESPAWNED')}</b> up</span><span><b>${n('OFFLINE')}</b> offline</span></div>` +
-          `<div class="alist">${fleet.admiral.map((id) => { const m = fleetMember(id); return m ? `<div class="arow" data-member="${esc(id)}" data-st="${esc(m.status)}">${admiralInner(m)}</div>` : ''; }).join('')}</div>`;
-      } else {
-        body = fleet.groups.map((g, i) => {
-          const named = g.id !== null;
-          const last = fleet.groups.length - 2;
-          const acts = named ? `<span class="acts"><button class="btn" data-f="up" data-g="${esc(g.id)}" type="button" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>` +
-            `<button class="btn" data-f="down" data-g="${esc(g.id)}" type="button" title="Move down" ${i >= last ? 'disabled' : ''}>↓</button>` +
-            `<button class="btn" data-f="rename" data-g="${esc(g.id)}" type="button" title="Rename">Rename</button>` +
-            `<button class="btn danger" data-f="remove" data-g="${esc(g.id)}" type="button" title="Remove the group; its members go to Ungrouped">×</button></span>` : '<span></span>';
-          const roll = g.rollup.downed ? esc(g.rollup.text).replace(/(\d+ downed)/, '<b>$1</b>') : esc(g.rollup.text);
-          const cards = g.collapsed ? '' : `<div class="fcards">${g.members.map((id) => { const m = fleetMember(id); return m ? `<div class="fcard" draggable="true" data-member="${esc(id)}" data-st="${esc(m.status)}">${fleetCardInner(m)}</div>` : ''; }).join('') || '<div class="hint">Drag cards here</div>'}</div>`;
-          return `<section class="fgroup" data-gid="${esc(g.id === null ? '' : g.id)}"><div class="fgroup-h">` +
-            `<button class="chev" data-f="collapse" data-g="${esc(g.id === null ? '' : g.id)}" type="button" title="${g.collapsed ? 'Expand' : 'Collapse'}" ${named ? '' : 'disabled'}>${g.collapsed ? '▸' : '▾'}</button>` +
-            `<span class="name">${esc(g.name)}</span>${acts}<span class="roll">${roll}</span></div>${cards}</section>`;
-        }).join('');
+      if (boarded) body = '<div class="fboard" data-keep="1"><div class="fbstate" id="fb-state" role="status"></div><div class="fblive"><div class="fbwrap"><div class="grid-stack" id="fb-board"></div></div><aside class="fbedit" id="fb-edit" hidden></aside></div></div>';
+      else if (!joined) body = `<div class="fempty"><p>Not in a fleet. Paste a connection code from the CIC portal, or an invite from the fleet's host, to join; or Host one for your friends.</p><p class="fkey">Your fleet key <b>${esc(fleet.me.fingerprint)}</b></p></div>`;
+      else if (l.choices) body = chooserHtml();
+      else if (fleet.tree && l.state !== 'none') body = (condensed ? `<div class="ahead"><span><b>${r.downed}</b> downed</span><span><b>${r.dead}</b> dead</span><span><b>${r.up}</b> up</span><span><b>${r.offline}</b> offline</span></div>` : '') + treeHtml(condensed);
+      else if (!fleet.members.length) body = `<p class="fempty">${l.state === 'online' ? 'No member cards yet.' : 'No member cards while the fleet is offline.'}</p>`;
+      else {
+        let gi = 0;
+        body = (condensed ? `<div class="ahead"><span><b>${r.downed}</b> downed</span><span><b>${r.dead}</b> dead</span><span><b>${r.up}</b> up</span><span><b>${r.offline}</b> offline</span></div>` : '') +
+          fleet.wings.map((w) => {
+            const groups = w.groups.map((g) => fleetGroupHtml(g, gi++, personal, condensed)).join('');
+            if (w.id === null) return groups;
+            const cmd = w.commanders.map((k) => (fleetMember(k) || {}).handle).filter(Boolean).join(', ');
+            return `<section class="fwing${condensed ? ' condensed' : ''}" data-wid="${esc(w.id)}"><div class="fwing-h"><span class="name">${esc(w.name)}</span>` +
+              `${cmd ? `<small class="lead" title="Commander">${ROLE.wing_commander[0]} ${esc(cmd)}</small>` : ''}<span class="roll">${rollHtml(w.rollup)}</span></div>${groups}</section>`;
+          }).join('');
       }
-      el.innerHTML = `${head}<div class="fbody">${body}</div>`;
-      for (const c of el.querySelectorAll('[data-member]')) { c._html = c.innerHTML; markFleetSel(c); }
+      // Patched in place, not replaced: a roll-up or state change every card update must not
+      // reset the scroll, the focus or a running flash.
+      const scroll = el.querySelector('.fbody');
+      const top = scroll ? scroll.scrollTop : 0;
+      const tpl = document.createElement('template');
+      tpl.innerHTML = `${head}<div class="fbody${boarded ? ' fbmode' : ''}">${full && !boarded ? `<div class="fcols">${body}</div>` : body}</div>`;
+      morph(el, tpl.content);
+      const after = el.querySelector('.fbody');
+      if (after && after.scrollTop !== top) after.scrollTop = top;
+      for (const c of el.querySelectorAll('[data-member]')) { if (!c.closest('.fboard')) { c._html = c.innerHTML; markFleetSel(c); } }
+      if (full) fbRender();
     }
+
+    /** Makes `to`'s children match `from`'s, keeping every node whose tag already matches. */
+    function morph(to, from) {
+      const want = [...from.childNodes];
+      while (to.childNodes.length > want.length) to.lastChild.remove();
+      want.forEach((n, i) => {
+        const have = to.childNodes[i];
+        if (!have) { to.appendChild(n.cloneNode(true)); return; }
+        if (have.nodeType !== n.nodeType || have.nodeName !== n.nodeName) { to.replaceChild(n.cloneNode(true), have); return; }
+        if (n.nodeType !== Node.ELEMENT_NODE) { if (have.nodeValue !== n.nodeValue) have.nodeValue = n.nodeValue; return; }
+        // The Fleet tab's board keeps its own DOM (gridstack's): it is drawn by fbRender.
+        if (have.hasAttribute('data-keep') && n.hasAttribute('data-keep')) return;
+        for (const { name } of [...have.attributes]) if (!n.hasAttribute(name)) have.removeAttribute(name);
+        for (const { name, value } of n.attributes) if (have.getAttribute(name) !== value) have.setAttribute(name, value);
+        morph(have, n);
+      });
+    }
+
     function markFleetSel(c) {
       const on = c.dataset.member === fleetDetail;
       c.classList.toggle('sel', on);
@@ -2229,15 +2863,30 @@
         [{ text: 'Cancel', value: null }, { text: 'Save', value: 'save', cls: 'primary' }]).then((c) => (c === 'save' ? $('fleet-name').value : null));
     }
 
-    $('fleet').addEventListener('click', async (e) => {
+    function closeFleetOverlays(except) {
+      for (const id of ['fleet-fields', 'fleet-join', 'fleet-consent', 'fleet-host']) if (id !== except) $(id).hidden = true;
+      if (except !== 'fleet-detail') closeFleetDetail();
+    }
+
+    for (const view of fleetViews()) view.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-f]');
       if (b) {
         const act = b.dataset.f, gid = b.dataset.g;
         const g = fleet.view.groups.find((x) => x.id === gid);
-        if (act === 'hide') { fleetOpen = false; try { localStorage.setItem(FLEET_OPEN_KEY, '0'); } catch { /* per-viewer only */ } layoutFleet(); renderBar(); }
+        if (act === 'hide') setFleetOpen(false);
+        else if (act === 'choose') send({ type: 'fleet.choose', event: b.dataset.e }, (r) => { if (r && r.problems && r.problems.length) notice(r.problems[0], 'bad'); });
+        // APP is this page's own app, so on a companion the portal opens there, not on the game PC.
+        else if (act === 'cic' && APP) {
+          e.preventDefault();
+          const r = await APP.request('openUrl', { url: b.getAttribute('href') });
+          if (!r || !r.ok) notice((r && r.text) || 'Could not open the CIC portal', 'bad');
+        }
         else if (act === 'add') { const name = await fleetName('New group'); if (name !== null) send({ type: 'fleet.group.add', name }); }
         else if (act === 'admiral') send({ type: 'fleet.admiral', on: !fleet.view.admiral });
         else if (act === 'fields') openFleetFields();
+        else if (act === 'join') openFleetJoin();
+        else if (act === 'consent') openFleetConsent();
+        else if (act === 'host') openFleetHost();
         else if (act === 'collapse' && g) send({ type: 'fleet.group.collapse', group: gid, collapsed: !g.collapsed });
         else if (act === 'rename' && g) { const name = await fleetName('Rename group', g.name); if (name !== null) send({ type: 'fleet.group.rename', group: gid, name }); }
         else if (act === 'remove' && g) {
@@ -2254,22 +2903,23 @@
       if (card) { if (card.dataset.member === fleetDetail) closeFleetDetail(); else openFleetDetail(card.dataset.member); }
     });
     // Drag a card onto a group (or onto a card, to go before it); Ungrouped takes it out of its group.
-    $('fleet').addEventListener('dragstart', (e) => {
+    // Only the viewer's own groups: an event's groups are the server's.
+    for (const view of fleetViews()) view.addEventListener('dragstart', (e) => {
       const card = e.target.closest('.fcard');
-      if (!card) return;
+      if (!card || fleetEvent()) return;
       fleetDrag = card.dataset.member;
       card.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', fleetDrag);
     });
-    $('fleet').addEventListener('dragover', (e) => {
+    for (const view of fleetViews()) view.addEventListener('dragover', (e) => {
       const sec = fleetDrag && e.target.closest('.fgroup');
       if (!sec) return;
       e.preventDefault();
-      for (const s of $('fleet').querySelectorAll('.fgroup.drop')) if (s !== sec) s.classList.remove('drop');
+      for (const s of e.currentTarget.querySelectorAll('.fgroup.drop')) if (s !== sec) s.classList.remove('drop');
       sec.classList.add('drop');
     });
-    $('fleet').addEventListener('drop', (e) => {
+    for (const view of fleetViews()) view.addEventListener('drop', (e) => {
       const sec = fleetDrag && e.target.closest('.fgroup');
       if (!sec) return;
       e.preventDefault();
@@ -2283,13 +2933,1199 @@
       }
       send(msg);
     });
-    $('fleet').addEventListener('dragend', () => { fleetDrag = null; fleetBuilt = ''; renderFleet(); });
+    for (const view of fleetViews()) view.addEventListener('dragend', () => { fleetDrag = null; for (const v of fleetViews()) v._built = ''; renderFleet(); });
+
+    // ------------------------------------------------------------ fleet: the Fleet tab's board
+
+    // The Fleet tab as a board of objects, as the CIC Live board: every unit object is its own
+    // people on top and its own grid below, by default its child units side by side (unit-grid.js,
+    // copied from cic-panel, has the rules). Cells are square and fixed in px; the board scrolls
+    // inside its box from the top left. Layouts are saved per CIC event and one for peer to peer.
+    const UG = window.UnitGrid;
+    const FB = { key: '', saved: null, loaded: false, source: 'starter', layout: null, editing: false, changed: false, selected: null, note: '', board: null, grids: [], items: new Map(), sig: '', made: 0, moving: false, fitting: false, rebuildDue: false, settling: false, movedAt: -Infinity };
+    const fbNewId = () => `o${Date.now().toString(36)}${(FB.made += 1)}`;
+    const fbCell = () => (FB.layout && FB.layout.cell) || UG.DEFAULT_CELL;
+    const fbKey = () => (fleetEvent() && fleet.tree ? `event:${fleet.tree.id}` : 'p2p');
+    /** The board takes the Fleet tab once there is something to arrange. */
+    const fbOn = () => Boolean(UG && fleet && onFleetTab() && fleet.link.state !== 'none' && !fleet.link.choices &&
+      (fleetEvent() ? Boolean(fleet.tree && fleet.placed) : fleet.members.length > 0));
+    const fbEditable = () => fbOn() && window.innerWidth >= 900;
+
+    /** The unit tree as unit-grid.js takes it: an event's units, or the viewer's own groups. */
+    function fbView() {
+      const units = [];
+      const unitOf = new Map();
+      if (fleetEvent() && fleet.tree) {
+        const add = (list, parent) => list.forEach((u) => {
+          units.push({ id: u.id, parent, kind: u.kind, name: u.name, node: u });
+          for (const s of u.seats) unitOf.set(s.member, u.id);
+          for (const p of u.leads) if (!unitOf.has(p.member)) unitOf.set(p.member, u.id);
+          if (u.shipCard) unitOf.set(u.shipCard, u.id);
+          add(u.units, u.id);
+        });
+        add(fleet.tree.units, null);
+      } else {
+        for (const g of fleet.groups) {
+          if (g.id === null) continue;
+          units.push({ id: g.id, parent: null, kind: 'group', name: g.name, group: g });
+          for (const m of g.members) unitOf.set(m, g.id);
+        }
+      }
+      const byId = new Map(units.map((u) => [u.id, u]));
+      const kids = (id) => units.filter((u) => (u.parent || null) === (id || null));
+      const subtree = (id) => { const out = []; const walk = (u) => { out.push(u); kids(u.id).forEach(walk); }; if (byId.has(id)) walk(byId.get(id)); return out; };
+      const membersUnder = (id) => [...unitOf.entries()].filter(([, u]) => subtree(id).some((x) => x.id === u)).map(([m]) => m);
+      return { units, byId, kids, subtree, membersUnder, unitOf: (m) => unitOf.get(m) || null, top: kids(null) };
+    }
+
+    /** The viewer's rank, for the starter: admiral, commander, lead or seat. */
+    function fbTier() {
+      const roles = myRoles();
+      if (roles.includes('admiral')) return 'admiral';
+      if (roles.some((r) => /_commander$/.test(r) && !/^squad(ron)?_/.test(r))) return 'commander';
+      if (roles.some((r) => ['squadron_commander', 'squad_commander', 'captain'].includes(r))) return 'lead';
+      return 'seat';
+    }
+
+    /** The starter for the viewer's rank, as the CIC board's, in cells of the default size. Unit
+     * objects come without children: each gets its default grid (its child units side by side). */
+    function fbStarter(v) {
+      const C = UG.COLUMNS;
+      const objects = [];
+      let n = 0;
+      const add = (kind, x, y, w, h, extra) => { const o = Object.assign({ id: `o${++n}`, kind, x, y, w, h }, extra || {}); objects.push(o); return o; };
+      const detailsPx = fbDetailsModel(v);
+      const unit = (u, x, y, w, look) => add('unit', x, y, w, UG.naturalRows(u.id, v, { cols: w, cell: UG.DEFAULT_CELL, detailsPx, look }), { bind: u.id, look });
+      if (!fleetEvent()) {
+        add('rollup', 0, 0, 6, 1, { label: 'Everyone' });
+        add('alerts', 6, 0, 6, 2);
+        const groups = v.top.map((u) => unit(u, 0, 0, 12, 'cards'));
+        UG.placeSideBySide(groups, C, 2);
+        let y = groups.reduce((m, o) => Math.max(m, o.y + o.h), 2);
+        const loose = fleet.members.filter((m) => !m.ship && !v.unitOf(m.member)).slice(0, UG.MAX_OBJECTS - objects.length);
+        loose.forEach((m, i) => add('member', (i % 6) * 4, y + Math.floor(i / 6) * 3, 4, 3, { bind: m.member, look: 'full' }));
+        return UG.serializeLayout({ cell: UG.DEFAULT_CELL, objects });
+      }
+      const me = fleet.me.member;
+      let mine = v.units.find((u) => u.node.leads.some((p) => p.member === me)) || v.byId.get(v.unitOf(me));
+      const above = mine && v.byId.get(mine.parent);
+      if (mine && mine.kind === 'ship' && above && above.kind === 'squadron') mine = above;
+      switch (fbTier()) {
+        case 'admiral': {
+          const shown = v.top.slice(0, 5);
+          const rw = Math.max(3, Math.floor(18 / (1 + shown.length)));
+          // Three cells, as on the CIC board: three alert rows fit at 72 px.
+          add('rollup', 0, 0, rw, 3, { label: 'Event' });
+          shown.forEach((u, i) => add('rollup', (i + 1) * rw, 0, rw, 3, { bind: u.id }));
+          add('alerts', 18, 0, 6, 3);
+          let y = 3;
+          for (const u of v.top) y += unit(u, 0, y, C, 'condensed').h;
+          add('unassigned', 0, y, 8, 3);
+          break;
+        }
+        case 'commander': {
+          add('rollup', 0, 0, 6, 1, mine ? { bind: mine.id } : {});
+          if (mine) unit(mine, 0, 1, 18, 'condensed');
+          add('alerts', 18, 0, 6, 3, mine ? { bind: mine.id } : {});
+          add('unassigned', 18, 3, 6, 3);
+          break;
+        }
+        default: {
+          if (!mine) { add('member', 0, 0, 4, 3, { bind: me, look: 'full' }); break; }
+          unit(mine, 0, 0, 16, 'cards');
+          let y = 0;
+          const fleetShip = mine.kind === 'ship' && above && above.kind === 'fleet';
+          // At 72 px a ship card shows in full in three cells.
+          if (fleetShip) { add('ship', 16, y, 8, 3, { bind: `ship:${mine.id}` }); y += 3; }
+          add('rollup', 16, y, 8, 1, { bind: mine.id }); y += 1;
+          if (fbTier() === 'lead') add('alerts', 16, y, 8, 3, { bind: mine.id });
+        }
+      }
+      return UG.serializeLayout({ cell: UG.DEFAULT_CELL, objects });
+    }
+
+    // ---- what each object shows
+
+    const fbHint = (text) => `<p class="hint">${esc(text)}</p>`;
+    const fbCondensed = (o) => o.look === 'condensed' || o.look === 'compact' || admiralOn();
+
+    /** A member's card, or a row saying why there is none. */
+    function fbPerson(member, condensed) {
+      const m = fleetMember(member);
+      if (m) return condensed ? `<div class="arow" data-member="${esc(member)}" data-st="${esc(m.status)}">${admiralInner(m)}</div>` : `<div class="fcard" data-member="${esc(member)}" data-st="${esc(m.status)}">${fleetCardInner(m)}</div>`;
+      return '';
+    }
+
+    /** A unit object's top: the unit's own people (leads, the ship card, seats; a group's
+     * members), less anyone placed as a card in its grid. */
+    function fbUnitTop(o, u, depth, v) {
+      const condensed = fbCondensed(o);
+      const placed = new Set((o.children || []).filter((c) => c.kind === 'member' || c.kind === 'ship').map((c) => c.bind));
+      const list = (inner) => (inner ? `<div class="${condensed ? 'alist' : 'fcards'}">${inner}</div>` : '');
+      if (u.group) {
+        const inner = u.group.members.filter((m) => !placed.has(m)).map((m) => fbPerson(m, condensed)).join('');
+        return list(inner) || (UG.isContainer(o) ? '' : fbHint('Nobody in this group yet'));
+      }
+      const n = u.node;
+      if (!n.open) return n.leads.length ? `<p class="leadline">${leadLine(n.leadRole, n.leads)}</p>` : '';
+      const loose = n.leads.filter((p) => !p.seated && fleetMember(p.member) && !placed.has(p.member)).map((p) => seatHtml(p, null, false, condensed)).join('');
+      const ship = n.shipCard && !placed.has(n.shipCard) ? seatHtml({ member: n.shipCard, handle: n.name, connected: true }, null, false, condensed) : '';
+      const seats = n.seats.filter((s) => !placed.has(s.member)).map((s) => seatHtml(s, s, s.notAboard, condensed)).join('');
+      const kids = UG.mayHold(o, depth) ? '' : n.units.map((c) => unitHtml(c, condensed)).join('');
+      const inner = loose + ship + seats;
+      if (!inner && !kids) return UG.isContainer(o) || v.kids(u.id).length ? '' : fbHint('Nobody here yet');
+      return list(inner) + (kids ? `<div class="fkids">${kids}</div>` : '');
+    }
+
+    function fbRollupOf(o, v) {
+      if (!o.bind) return fleetEvent() && fleet.tree ? fleet.tree.rollup : fleet.rollup;
+      const u = v.byId.get(o.bind);
+      return u && (u.group ? u.group.rollup : u.node.open ? u.node.rollup : null);
+    }
+
+    function fbBody(o, depth, parent, v) {
+      if (parent && parent.bind && o.bind && v.byId.has(parent.bind) && o.kind !== 'rollup' && o.kind !== 'alerts') {
+        const id = o.bind.replace(/^ship:/, '');
+        const under = o.kind === 'member' ? v.membersUnder(parent.bind).includes(o.bind) || !v.unitOf(o.bind) : !v.byId.has(id) || v.subtree(parent.bind).some((x) => x.id === id);
+        if (!under) return fbHint('Not in this unit');
+      }
+      switch (o.kind) {
+        case 'unit': {
+          const u = v.byId.get(o.bind);
+          return u ? fbUnitTop(o, u, depth, v) : fbHint(o.bind ? 'Unit not in this fleet' : 'No unit chosen');
+        }
+        case 'member': {
+          const card = fbPerson(o.bind, fbCondensed(o));
+          if (card) return card;
+          const p = fleetEvent() && fleet.tree ? [...fbView().units.flatMap((u) => [...u.node.leads, ...u.node.seats])].find((x) => x.member === o.bind) : null;
+          return fbHint(p ? `${p.handle}: ${p.connected ? 'no card yet' : 'not connected yet'}` : 'No card from this member');
+        }
+        case 'ship': return fbPerson(o.bind, fbCondensed(o)) || fbHint('No ship card yet');
+        case 'rollup': {
+          const r = fbRollupOf(o, v);
+          if (!r) return fbHint(o.bind && !v.byId.has(o.bind) ? 'Unit not in this fleet' : 'Not in your view');
+          const parts = [[r.downed, 'downed', 'bad'], [r.dead, 'dead', 'bad'], [r.offline, 'offline', ''], [r.unknown, 'no status', '']].filter(([n]) => n);
+          return `<div class="rbig"><b>${r.up}</b><span>/${r.total} up</span>${parts.map(([n, what, t]) => `<span class="rp${t ? ` ${t}` : ''}">${n} ${what}</span>`).join('')}</div>`;
+        }
+        case 'alerts': {
+          const within = o.bind ? new Set(v.membersUnder(o.bind)) : null;
+          const list = fleet.members.filter((m) => !m.ship && (m.status === 'DOWNED' || m.status === 'DEAD') && (!within || within.has(m.member)));
+          if (!list.length) return '<p class="hint ok">No one downed or dead.</p>';
+          return `<div class="alist">${list.map((m) => `<div class="arow" data-member="${esc(m.member)}" data-st="${esc(m.status)}">${admiralInner(m)}</div>`).join('')}</div>`;
+        }
+        case 'unassigned': {
+          const names = fleetEvent() ? (fleet.commander ? fleet.unassigned : null) : fleet.members.filter((m) => !m.ship && !v.unitOf(m.member)).map((m) => ({ handle: m.handle, connected: m.status !== 'OFFLINE' }));
+          if (!names) return fbHint('Shown to commanders and the admiral');
+          if (!names.length) return fbHint(fleetEvent() ? 'Everyone is placed.' : 'Everyone is in a group.');
+          return `<ul class="names">${names.map((p) => `<li><span class="who">${esc(p.handle)}</span><span class="why" data-on="${p.connected ? 1 : 0}">${p.connected ? 'connected' : 'not connected'}</span></li>`).join('')}</ul>`;
+        }
+        case 'header': {
+          const r = fbRollupOf({}, v);
+          return `<div class="evhead"><b>${esc(fleetEvent() && fleet.tree ? fleet.tree.name : 'Peer to peer')}</b><span>${rollHtml(r)}</span></div>`;
+        }
+        case 'timeline': return fbHint('The timeline is on the CIC Live board.');
+        default: return '';
+      }
+    }
+
+    function fbTitle(o, v) {
+      if (!o) return 'Board';
+      if (o.label) return o.label;
+      const k = UG.KINDS[o.kind].label;
+      const unit = (id) => { const u = v.byId.get(id); return u ? u.name : ''; };
+      if (o.kind === 'unit' || o.kind === 'rollup' || o.kind === 'alerts') return o.bind ? unit(o.bind) || k : o.kind === 'unit' ? k : `${k}: ${fleetEvent() ? 'event' : 'everyone'}`;
+      if (o.kind === 'member') return (fleetMember(o.bind) || {}).handle || k;
+      if (o.kind === 'ship') return unit(String(o.bind || '').replace(/^ship:/, '')) || k;
+      return k;
+    }
+
+    function fbHead(o, v) {
+      const fresh = o.isNew ? '<span class="newtag">New</span>' : '';
+      if (o.kind !== 'unit') return `<span class="ot">${esc(fbTitle(o, v))}</span>${fresh}<span class="ok">${esc(UG.KINDS[o.kind].label)}</span>`;
+      const u = v.byId.get(o.bind);
+      const r = fbRollupOf(o, v);
+      const kind = u ? (u.group ? 'Group' : u.node.kindLabel) : 'Unit';
+      const lead = u && !u.group && u.node.open && u.node.leads.length ? leadLine(u.node.leadRole, u.node.leads) : '';
+      return `<span class="ot">${esc(fbTitle(o, v))}</span>${fresh}${lead}${r && r.total ? `<span class="roll">${rollHtml(r)}</span>` : ''}<span class="ok">${esc(kind)}</span>`;
+    }
+
+    /** Patches an element to new HTML in place, so cards keep their nodes (and a flash its beat). */
+    function fbSet(el, html) {
+      if (el._html === html) return;
+      el._html = html;
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html;
+      morph(el, tpl.content);
+    }
+
+    function fbDraw(o, depth, parent, v) {
+      const it = FB.items.get(o.id);
+      if (!it) return;
+      fbSet(it.head, fbHead(o, v));
+      const body = fbBody(o, depth, parent, v);
+      fbSet(it.body, body);
+      it.body.hidden = o.kind === 'unit' && !body;
+      it.content.dataset.kind = o.kind;
+      const u = o.kind === 'unit' && v.byId.get(o.bind);
+      if (u) it.content.dataset.unit = u.kind;
+      if (o.kind === 'unit') it.content.dataset.tier = String(UG.titleTier(depth, u, v));
+      it.content.dataset.align = UG.titleAlign(o, depth);
+      it.content.classList.toggle('sel', FB.editing && FB.selected === o.id);
+      // Only the selected object resizes, so a unit's handle never covers one inside it. The
+      // attribute goes too: gridstack reads it again when a unit around the object is resized.
+      const resizable = FB.editing && FB.selected === o.id;
+      const node = it.el.gridstackNode;
+      if (FB.editing && node && !node.noResize !== resizable) {
+        if (resizable) it.el.removeAttribute('gs-no-resize'); else it.el.setAttribute('gs-no-resize', 'true');
+        it.grid.resizable(it.el, resizable);
+      }
+      for (const c of it.body.querySelectorAll('[data-member]')) markFleetSel(c);
+    }
+
+    // ---- the grids
+
+    const fbGridOpts = (column) => ({ column, cellHeight: fbCell(), margin: UG.OBJECT_INSET_PX, float: true, animate: false, staticGrid: !FB.editing, alwaysShowResizeHandle: true, handle: '.oh', acceptWidgets: false });
+
+    function fbTeardown() {
+      for (const g of FB.grids.slice(1).reverse()) g.grid.destroy(false);
+      FB.grids = FB.grids.slice(0, 1);
+      FB.items.clear();
+      if (FB.board) FB.board.removeAll(true);
+    }
+
+    /** Gives unit objects with no grid their default one, each child unit as tall as it takes to
+     * show in full; a unit whose grid was reset or that was just added grows to show it. */
+    function fbFill(v) {
+      UG.fillDefaults(FB.layout.objects, v, { nextId: fbNewId, cell: fbCell(), detailsPx: fbDetailsModel(v) });
+      UG.clampTo(FB.layout.objects, UG.COLUMNS);
+    }
+
+    function fbBuild(v) {
+      const host = document.getElementById('fb-board');
+      if (!host) return;
+      fbFill(v);
+      if (!FB.board || FB.board.el !== host) {
+        if (FB.board) for (const g of FB.grids.slice().reverse()) g.grid.destroy(false);
+        FB.board = GridStack.init(fbGridOpts(UG.COLUMNS), host);
+        FB.grids = [{ grid: FB.board, owner: null }];
+        // Gridstack reports a drag or resize inside a unit's grid here too: the grid it sat in is edited.
+        const edited = (el) => { FB.changed = true; if (el && el.gridstackNode) UG.touchParent(FB.layout.objects, el.gridstackNode.id); };
+        fbTrackMoves(FB.board, (event, el) => { edited(el); fbFit(); }, (event, el) => { edited(el); fbResized(event, el); });
+      }
+      fbTeardown();
+      FB.board.cellHeight(fbCell());
+      host.style.width = `${UG.COLUMNS * fbCell()}px`;
+      host.style.setProperty('--obj-inset', `${UG.OBJECT_INSET_PX}px`);
+      $('fleet-full').style.setProperty('--fbcell', `${fbCell()}px`);
+      FB.board.batchUpdate();
+      for (const w of UG.toGridstack(FB.layout.objects)) fbAddItem(FB.board, w, null, 0, v);
+      FB.board.batchUpdate(false);
+      for (const g of FB.grids) g.grid.setStatic(!FB.editing);
+      // Settled first: a fit before it would grow units to their children's estimated heights
+      // and push what sits below them down, to stay there once the children settle.
+      if (!fbSettle(v)) fbFit();
+    }
+
+    /** Units sized by default take exactly the rows they are drawn in (unit-grid.js settleRows):
+     * one pass after a build, which builds once more only when something moved. */
+    function fbSettle(v) {
+      if (FB.settling) return false;
+      fbSync();
+      const own = (o) => { const it = FB.items.get(o.id); return it ? fbDetailsPx(it) : null; };
+      if (!UG.settleRows(FB.layout.objects, own, fbCell(), FB.source === 'starter' && !FB.editing)) return false;
+      FB.settling = true;
+      try { fbBuild(v); } finally { FB.settling = false; }
+      return true;
+    }
+
+    function fbAddItem(grid, w, parent, depth, v) {
+      const o = UG.find(FB.layout.objects, w.id).object;
+      delete o.place;
+      const el = document.createElement('div');
+      el.className = 'grid-stack-item';
+      const content = document.createElement('div');
+      content.className = 'grid-stack-item-content obj';
+      // A unit's parts sit in one box, which gridstack measures to fit the unit's height.
+      const box = o.kind === 'unit' ? document.createElement('div') : content;
+      if (box !== content) { box.className = 'fitbox'; content.appendChild(box); content.classList.add('unitobj'); content.dataset.depth = String(depth); }
+      const part = (tag, cls) => { const x = document.createElement(tag); x.className = cls; box.appendChild(x); return x; };
+      const head = part('header', 'oh');
+      const body = part('div', 'ob');
+      el.appendChild(content);
+      grid.el.appendChild(el);
+      // A unit's size is the layout's, never its content's: its grid scrolls inside it.
+      const { subGridOpts, sizeToContent: _fit, ...opts } = w;
+      grid.makeWidget(el, Object.assign(opts, { noResize: !(FB.editing && FB.selected === o.id) }));
+      FB.items.set(o.id, { grid, el, content, head, body });
+      if (subGridOpts) {
+        const scroll = part('div', 'subwrap');
+        const subHost = document.createElement('div');
+        subHost.className = 'grid-stack sub';
+        scroll.appendChild(subHost);
+        subHost.dataset.owner = o.id;
+        subHost.style.width = '100%';
+        const sub = GridStack.init(fbGridOpts(o.w), subHost);
+        el.gridstackNode.subGrid = sub;
+        sub.parentGridNode = el.gridstackNode;
+        FB.grids.push({ grid: sub, owner: o.id });
+        sub.batchUpdate();
+        for (const c of subGridOpts.children) fbAddItem(sub, c, o, depth + 1, v);
+        sub.batchUpdate(false);
+        fbTrackMoves(sub, () => { FB.changed = true; UG.touch(FB.layout.objects, o.id); fbFit(); }, (event, child) => { FB.changed = true; UG.touch(FB.layout.objects, o.id); fbResized(event, child); });
+      }
+      fbDraw(o, depth, parent, v);
+    }
+
+    /** Marks a drag or resize in progress on `grid`, so nothing else writes to the grids meanwhile,
+     * then calls `dragStop` or `resizeStop` when it ends. Gridstack keeps one handler per drag or
+     * resize event, so they all go through here. */
+    function fbTrackMoves(grid, dragStop, resizeStop) {
+      grid.on('dragstart resizestart', () => { FB.moving = true; });
+      grid.on('dragstop', (event, el) => { FB.moving = false; FB.movedAt = performance.now(); dragStop(event, el); });
+      grid.on('resizestop', (event, el) => { FB.moving = false; FB.movedAt = performance.now(); resizeStop(event, el); });
+    }
+
+    /** After a resize: a unit that holds objects gets a grid as wide as it is now. The rebuild
+     * waits for gridstack to finish its own resize stop: rebuilding inside it tore the item out
+     * from under gridstack, which threw and left its resize handle following the pointer. */
+    function fbResized(event, el) {
+      const n = el && el.gridstackNode;
+      const at = n && UG.find(FB.layout.objects, n.id);
+      // Sized by hand: it keeps its height when what it holds shrinks (fbFit).
+      if (at && at.object.kind === 'unit') at.object.sized = true;
+      if (at && UG.isContainer(at.object) && n.w !== at.object.w) {
+        if (!FB.rebuildDue) {
+          FB.rebuildDue = true;
+          setTimeout(() => { FB.rebuildDue = false; if (FB.editing) fbRebuild(() => {}); });
+        }
+        return;
+      }
+      const c = el && el.querySelector(':scope > .obj');
+      if (c) { c.style.display = 'none'; void c.offsetHeight; c.style.display = ''; }
+      fbFit();
+      fbRedraw();
+      // Gridstack reports the stop before it settles the node's new size: fit again once it has,
+      // so the units around it follow at once.
+      setTimeout(fbFit);
+    }
+
+    /** A unit's header and its own people as drawn, in px. */
+    const fbDetailsPx = (it) => it.head.offsetHeight + (it.body.hidden ? 0 : it.body.offsetHeight);
+
+    // What a unit object's parts take in px, measured on the board: its header (a second line
+    // when narrow), its border and body padding, a condensed row (two lines), a card (one with
+    // every bar), a list's padding and gaps, a card's least width, a hint or lead line, and in a
+    // unit too deep for a grid each child unit's header, list padding and indent. A header and
+    // one condensed row come to under a cell, so a fighter starts one cell tall.
+    const FB_PX = { head: 22, head2: 18, narrow: 500, border: 2, pad: 4, row: 36, rowGap: 4, card: 210, cardGap: 6, cardW: 200, line: 20, kidHead: 31, indent: 7 };
+
+    /** For unit-grid.js: how tall a unit object's header and own people are, `px` wide with look
+     * `look`, before it is drawn (as fbUnitTop draws them); one that holds no grid (`holds`
+     * false) lists its child units too. Errs tall, so a unit sized by it never hides its grid. */
+    function fbDetailsModel(v) {
+      const P = FB_PX;
+      const list = (n, inner, cards, pad) => {
+        if (!n) return 0;
+        if (!cards) return pad + n * P.row + (n - 1) * P.rowGap;
+        const rows = Math.ceil(n / Math.max(1, Math.floor((inner + P.cardGap) / (P.cardW + P.cardGap))));
+        return pad + rows * P.card + (rows - 1) * P.cardGap;
+      };
+      const people = (node) => node.leads.filter((p) => !p.seated && fleetMember(p.member)).length + (node.shipCard ? 1 : 0) + node.seats.length;
+      // unitHtml: a header, its people, its child units indented; "Nobody here yet" when open and empty.
+      const nested = (node, px, cards) => {
+        const kids = node.units.reduce((t, c) => t + nested(c, px - P.indent, cards), 0);
+        const own = list(people(node), px - 16, cards, cards ? 14 : 10);
+        return P.kidHead + own + kids + (node.open && !own && !kids ? 14 + P.line : 0);
+      };
+      return (u, px, look, holds) => {
+        const cards = !(look === 'condensed' || look === 'compact' || admiralOn());
+        const inner = px - P.border - P.pad - 4;
+        const head = P.head + (px < P.narrow ? P.head2 : 0);
+        let body;
+        if (u.group) body = list(u.group.members.length, inner, cards, cards ? 4 : 0);
+        else if (!u.node.open) body = u.node.leads.length ? P.line : 0;
+        else body = list(people(u.node), inner, cards, cards ? 4 : 0) + (holds ? 0 : u.node.units.reduce((t, c) => t + nested(c, inner - P.indent, cards), 0));
+        if (body) return head + P.pad + body;
+        const hint = u.group || (u.node.open && !(holds && v.kids(u.id).length));
+        return head + (hint ? P.pad + P.line : 0);
+      };
+    }
+
+    /** Keeps each unit at least as tall as its header and own people and, when it holds objects,
+     * the rows down to its lowest child (a strip of its grid when empty). Innermost first, so a
+     * child's new size reaches the units around it. A unit that fitted its content follows it
+     * both ways; one sized by hand (or saved taller) keeps its size. */
+    function fbFit() {
+      if (!FB.layout || FB.moving || FB.fitting) return;
+      FB.fitting = true;
+      try { fbFitNow(); } finally { FB.fitting = false; }
+    }
+    function fbFitNow() {
+      const cell = fbCell();
+      const visit = (list) => {
+        for (const o of list) {
+          if (Array.isArray(o.children)) visit(o.children);
+          const it = FB.items.get(o.id);
+          const n = it && o.kind === 'unit' && it.el.gridstackNode;
+          if (!n) continue;
+          const kids = n.subGrid ? n.subGrid.engine.nodes : [];
+          const min = kids.length ? UG.unitMinRows(fbDetailsPx(it), false, cell) + Math.max(...kids.map((k) => k.y + k.h)) : UG.unitMinRows(fbDetailsPx(it), UG.isContainer(o), cell);
+          const h = !o.sized && n.h === o.fitMin ? min : Math.max(n.h, min);
+          if (n.minH !== min || n.h !== h) it.grid.update(it.el, { minH: min, h });
+          // On the object, not the item: it outlasts a rebuild.
+          o.fitMin = min;
+        }
+      };
+      visit(FB.layout.objects);
+    }
+
+    /** Where gridstack has each object now, from live grids only: a grid or node torn down by a
+     * rebuild has no say, so what is saved is the layout's own record for anything not on show. */
+    const fbPositions = () => {
+      const at = new Map();
+      for (const g of FB.grids) {
+        if (!g.grid.engine || !g.grid.el || !g.grid.el.isConnected) continue;
+        for (const n of g.grid.engine.nodes) if (n.el && n.el.isConnected) at.set(n.id, n);
+      }
+      return at;
+    };
+    const fbSync = () => { FB.layout.objects = UG.withPositions(FB.layout.objects, fbPositions()); };
+    const fbCurrent = (keepNew) => UG.serializeLayout({ cell: fbCell(), objects: UG.settleNew(UG.withPositions(FB.layout.objects, fbPositions()), keepNew) });
+
+    function fbAppendNew(v) {
+      let added = 0;
+      const cell = fbCell();
+      const detailsPx = fbDetailsModel(v);
+      UG.walk(FB.layout.objects, (o, depth) => {
+        if (!UG.mayHold(o, depth)) return;
+        const rows = (u, w) => UG.naturalRows(u.id, v, { cols: w, cell, detailsPx, look: o.look, depth: depth + 1 });
+        added += UG.autoAppend(o, FB.layout, v, fbNewId, rows).length;
+      });
+      return added;
+    }
+
+    /** Works on `chosen` (a saved layout, or the starter when null). */
+    /** Works on `chosen` (a saved layout, or the starter when null); a saved layout that cannot
+     * be shown gives way to the starter, with a note. */
+    function fbLoad(chosen) {
+      const v = fbView();
+      try {
+        FB.source = chosen ? 'own' : 'starter';
+        FB.layout = UG.serializeLayout(UG.migrateLayout(chosen) || fbStarter(v));
+        fbFill(v);
+        fbAppendNew(v);
+        fbBuild(v);
+      } catch (e) {
+        if (!chosen) throw e;
+        console.error(e);
+        FB.note = `Your layout could not be shown (${fbWhy(e)}); showing the starter.`;
+        fbLoad(null);
+        return;
+      }
+      if (!chosen) fbRedraw();
+    }
+
+    // Whatever stops the board, the Fleet tab says so and offers a reload: it is never left blank.
+    const fbWhy = (e) => String((e && e.message) || e || 'unknown').slice(0, 200);
+    function fbFail(e) {
+      console.error(e);
+      FB.failed = `The Fleet tab's board hit an error: ${fbWhy(e)}.`;
+      const el = document.getElementById('fb-state');
+      if (el) { el._html = ''; el.innerHTML = `<span class="lnote" role="alert">${esc(FB.failed)}</span><button class="btn" data-fbreload type="button">Reload</button>`; }
+    }
+    $('fleet-full').addEventListener('click', (e) => { if (e.target.closest('[data-fbreload]')) location.reload(); });
+
+    function fbRebuild(change) {
+      FB.changed = true;
+      fbSync();
+      change();
+      fbBuild(fbView());
+      fbRedraw();
+    }
+
+    function fbAsk() {
+      const key = fbKey();
+      send({ type: 'fleet.layout.get', key }, (r) => {
+        if (!r || r.key !== FB.key) return;
+        FB.saved = r.layout || null;
+        FB.loaded = true;
+        if (!FB.editing) { try { fbLoad(FB.saved); fbRedraw(); } catch (e) { fbFail(e); } }
+      });
+    }
+    function onFleetLayout() { if (FB.key && !FB.editing) fbAsk(); }
+
+    /** Called after each draw of the Fleet tab: the board's DOM is kept across pushes. */
+    function fbRender() {
+      try { fbRenderNow(); } catch (e) { fbFail(e); }
+    }
+    function fbRenderNow() {
+      if (FB.failed || FB.moving) return;
+      if (!fbOn()) { if (FB.editing) fbSetEditing(false); return; }
+      const host = document.getElementById('fb-board');
+      if (!host) return;
+      const key = fbKey();
+      const v = fbView();
+      const sig = JSON.stringify(v.units.map((u) => [u.id, u.parent]));
+      if (key !== FB.key) { FB.key = key; FB.loaded = false; FB.saved = null; FB.sig = sig; fbLoad(null); fbAsk(); }
+      else if (!FB.board || FB.board.el !== host) fbBuild(v);
+      else if (sig !== FB.sig) {
+        FB.sig = sig;
+        if (FB.source === 'starter' && !FB.editing) fbLoad(null);
+        else if (fbAppendNew(v)) { fbSync(); fbBuild(v); }
+      }
+      fbRedraw();
+    }
+
+    function fbRedraw() {
+      if (!FB.layout || !fbOn()) return;
+      const v = fbView();
+      UG.walk(FB.layout.objects, (o, depth, parent) => fbDraw(o, depth, parent, v));
+      fbFit();
+      fbDrawState(v);
+      fbDrawEdit(v);
+    }
+
+    // ---- edit mode: the pane (selection, palette, units not on the board, layout) and the bar
+
+    const fbButton = (act, label, extra) => `<button type="button" class="btn${extra && extra.cls ? ` ${extra.cls}` : ''}" data-fb="${act}"${extra && extra.off ? ' disabled' : ''}>${esc(label)}</button>`;
+    const fbUnplaced = (v) => UG.unplacedUnits(FB.layout, v).filter((u) => !u.parent);
+
+    function fbDrawState(v) {
+      const el = document.getElementById('fb-state');
+      if (!el || FB.failed) return;
+      const left = FB.editing ? [] : fbUnplaced(v);
+      const from = FB.source === 'own' ? 'your layout' : 'the starter';
+      fbSet(el, `<span>${FB.editing ? 'Editing' : 'Showing'} ${esc(from)}</span>${FB.note ? `<span class="lnote">${esc(FB.note)}</span>` : ''}` +
+        (left.length ? `<span class="lnote">Not on the board: ${esc(left.map((u) => u.name).join(', '))}. Edit to place them.</span>` : ''));
+    }
+
+    function fbCrumbs(id, v) {
+      const path = [];
+      for (let at = UG.find(FB.layout.objects, id); at; at = at.parent && UG.find(FB.layout.objects, at.parent.id)) path.unshift(fbTitle(at.object, v));
+      return ['Board', ...path].map(esc).join(' <span class="sep">&gt;</span> ');
+    }
+
+    function fbBindOptions(o, parent, v) {
+      const k = UG.KINDS[o.kind];
+      const inside = parent && parent.bind && v.byId.has(parent.bind);
+      const units = inside ? v.subtree(parent.bind).filter((u) => u.id !== parent.bind || o.kind !== 'unit') : v.units;
+      const members = inside ? new Set(v.membersUnder(parent.bind)) : null;
+      const opts = [];
+      if (k.binds.includes('')) opts.push(['', fleetEvent() ? 'Whole event' : 'Everyone']);
+      if (k.binds.includes('unit')) for (const u of units) opts.push([u.id, `${u.group ? 'Group' : u.node.kindLabel}: ${u.name}`]);
+      if (k.binds.includes('member')) for (const m of fleet.members.filter((x) => !x.ship && (!members || members.has(x.member)))) opts.push([m.member, m.handle]);
+      if (k.binds.includes('ship')) for (const m of fleet.members.filter((x) => x.ship && (!inside || units.some((u) => `ship:${u.id}` === x.member)))) opts.push([m.member, m.handle]);
+      if (o.bind && !opts.some(([x]) => x === o.bind)) opts.push([o.bind, 'Not in this fleet']);
+      return opts;
+    }
+
+    const fbNum = (key, label, val, max, min) => `<label class="num">${label}<input type="number" data-fbpos="${key}" min="${min}" max="${max}" value="${val}"></label>`;
+
+    function fbDrawEdit(v) {
+      const pane = document.getElementById('fb-edit');
+      if (!pane) return;
+      pane.hidden = !FB.editing;
+      if (!FB.editing || busy(pane)) return;
+      const at = FB.selected && UG.find(FB.layout.objects, FB.selected);
+      let props = '<h2>Selected</h2><p class="hint">Click an object\'s header to select it. Select a unit to add objects to its grid.</p>';
+      if (at) {
+        const o = at.object;
+        const k = UG.KINDS[o.kind];
+        const binds = fbBindOptions(o, at.parent, v);
+        const n = fbPositions().get(o.id) || o;
+        const cols = at.parent ? at.parent.w : UG.COLUMNS;
+        const mayPutBack = Boolean(UG.putBack(FB.layout, o.id, v));
+        const mayReset = UG.hasGrid(o) && !UG.untouched(o);
+        props = `<h2>Selected</h2><p class="crumb">${fbCrumbs(o.id, v)}</p><h3>${esc(k.label)}</h3>` +
+          (binds.length > 1 || (binds.length && binds[0][0]) ? `<label>Shows<select data-fbset="bind">${binds.map(([val, t]) => opt(val, t, (o.bind || '') === val)).join('')}</select></label>` : '') +
+          (k.looks ? `<label>Look<select data-fbset="look">${k.looks.map((l) => opt(l, l, (o.look || k.looks[0]) === l)).join('')}</select></label>` : '') +
+          `<label>Label<input data-fbset="label" maxlength="${UG.LABEL_MAX}" value="${esc(o.label || '')}" placeholder="${esc(fbTitle({ ...o, label: '' }, v))}"></label>` +
+          (o.kind === 'header' ? '' : `<label>Title<select data-fbset="align">${[['center', 'Centered'], ['left', 'Left']].map(([val, t]) => opt(val, t, UG.titleAlign(o, at.depth) === val)).join('')}</select></label>`) +
+          `<div class="pos">${fbNum('x', 'x', n.x, cols - 1, 0)}${fbNum('y', 'y', n.y, 999, 0)}${fbNum('w', 'w', n.w, cols, n.minW || 1)}${fbNum('h', 'h', n.h, 99, n.minH || 1)}</div>` +
+          `<div class="row">${fbButton('narrower', 'Narrower')}${fbButton('wider', 'Wider')}</div>` +
+          (at.parent || mayPutBack ? `<div class="row">${at.parent ? fbButton('moveout', 'Move out to the board') : ''}${mayPutBack ? fbButton('putback', 'Put back in its unit') : ''}</div>` : '') +
+          (mayReset ? `<div class="row">${fbButton('resetinside', 'Default cards inside')}</div>` : '') +
+          `<div class="row">${fbButton('remove', 'Remove', { cls: 'danger' })}${fbButton('unselect', 'Close')}</div>`;
+      }
+      const target = UG.targetOf(FB.layout.objects, FB.selected);
+      const kinds = UG.holds(target, v).filter((k) => k !== 'header' && k !== 'timeline');
+      const name = fbTitle(target.object, v);
+      const full = UG.count(FB.layout.objects) >= UG.MAX_OBJECTS;
+      const list = kinds.length
+        ? `<div class="pitems">${kinds.map((k) => `<button type="button" class="pitem" draggable="true" data-fb="add" data-kind="${k}"${full ? ' disabled' : ''}><b>${esc(UG.KINDS[k].label)}</b><small>${esc(UG.KINDS[k].about)}</small></button>`).join('')}</div>`
+        : fbHint(`${name} is nested as deep as objects go.`);
+      const add = `<h2>Add objects</h2><p class="addto">Add to: <b>${esc(name)}</b></p>${list}<p class="hint">Click to add, or drag onto the board or a unit's grid.</p>` +
+        (full ? fbHint(`Up to ${UG.MAX_OBJECTS} objects; remove one to add another.`) : '');
+      const left = fbUnplaced(v);
+      const units = left.length ? `<h2>Units not on the board</h2><div class="row">${left.map((u) => `<button type="button" class="btn" data-fb="place" data-unit="${esc(u.id)}">${esc(u.name)}</button>`).join('')}</div>` : '';
+      const layout = `<h2>Layout</h2><label>Cell size<select data-fbset="cell">${UG.CELLS.map((c) => opt(String(c), `${c} px`, c === fbCell())).join('')}</select></label>` +
+        `<div class="row">${fbButton('starter', 'Reset to starter')}${fbButton('revert', 'Revert')}</div>`;
+      fbSet(pane, `<section>${props}</section><section>${add}</section>${units ? `<section>${units}</section>` : ''}<section>${layout}</section>`);
+    }
+
+    function fbSetEditing(on) {
+      FB.editing = on;
+      FB.moving = false;
+      FB.changed = false;
+      FB.selected = null;
+      FB.note = '';
+      $('fleet-full').classList.toggle('fb-editing', on);
+      if (on) closeFleetOverlays();
+      for (const g of FB.grids) g.grid.setStatic(!on);
+      renderBar();
+      fbRedraw();
+    }
+
+    function fbMoveSelected(to) {
+      const it = FB.items.get(FB.selected);
+      if (!it) return;
+      FB.changed = true;
+      UG.touchParent(FB.layout.objects, FB.selected);
+      it.grid.update(it.el, to);
+      fbResized(null, it.el);
+    }
+
+    /** What a new object of `kind` shows in unit `c` (null: the board). */
+    function fbBindFor(kind, c, v) {
+      const bound = UG.boundUnits(FB.layout.objects);
+      if (kind === 'unit') {
+        const kids = c && c.bind ? v.kids(c.bind) : v.top;
+        return (kids.find((u) => !bound.has(u.id)) || kids[0] || v.units[0] || {}).id;
+      }
+      if (kind === 'member') {
+        const placed = new Set();
+        UG.walk(FB.layout.objects, (x) => { if (x.kind === 'member') placed.add(x.bind); });
+        const under = c && c.bind ? v.membersUnder(c.bind) : fleet.members.filter((m) => !m.ship).map((m) => m.member);
+        return under.find((m) => !placed.has(m)) || under[0] || fleet.me.member;
+      }
+      if (kind === 'ship') {
+        const ships = fleet.members.filter((m) => m.ship && (!c || !c.bind || v.subtree(c.bind).some((u) => `ship:${u.id}` === m.member)));
+        return ships[0] && ships[0].member;
+      }
+      if (kind === 'rollup' || kind === 'alerts') return c && c.bind ? c.bind : undefined;
+      return undefined;
+    }
+
+    /** Adds an object of `kind` to `target` (from UG.targetOf), or a unit for `unit` to the board. */
+    function fbAddObject(kind, target, unit) {
+      const v = fbView();
+      fbSync();
+      if (!unit && !UG.holds(target, v).includes(kind)) return;
+      const c = unit ? null : target.object;
+      const k = UG.KINDS[kind];
+      const o = { id: fbNewId(), kind, x: 0, y: 0, w: k.w, h: k.h, bind: unit || fbBindFor(kind, c, v) };
+      if (k.looks) o.look = kind === 'unit' && c && c.look ? c.look : k.looks[0];
+      const next = UG.addTo(FB.layout, c ? c.id : null, o);
+      if (!next) { FB.note = `Up to ${UG.MAX_OBJECTS} objects.`; fbRedraw(); return; }
+      FB.layout = next;
+      FB.changed = true;
+      FB.selected = o.id;
+      fbBuild(v);
+      fbRedraw();
+    }
+
+    function fbDone() {
+      const next = fbCurrent(true);
+      const problems = UG.layoutProblems(next);
+      if (problems.length) { FB.note = problems.join('; '); fbRedraw(); return; }
+      send({ type: 'fleet.layout.save', key: FB.key, layout: next }, (r, error) => {
+        const p = error ? [error] : (r && r.problems) || [];
+        if (p.length) { FB.note = `Not saved: ${p.join('; ')}`; fbRedraw(); return; }
+        FB.saved = next;
+        fbSetEditing(false);
+        fbLoad(next);
+        FB.note = 'Saved.';
+        fbRedraw();
+      });
+    }
+
+    async function fbLeave() {
+      if (!FB.editing) return true;
+      if (!FB.changed) { fbSetEditing(false); fbLoad(FB.saved); return true; }
+      const c = await ask('Unsaved changes', '<p>The Fleet tab layout has changes that are not saved.</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Discard', value: 'discard', cls: 'danger' }, { text: 'Save', value: 'save', cls: 'primary' }]);
+      if (c === 'save') { await fbDone(); return !FB.editing; }
+      if (c !== 'discard') return false;
+      fbSetEditing(false);
+      fbLoad(FB.saved);
+      return true;
+    }
+
+    $('fleet-full').addEventListener('click', (e) => {
+      if (!FB.editing || !e.target.closest('.fboard')) return;
+      const b = e.target.closest('[data-fb]');
+      const item = e.target.closest('#fb-board .grid-stack-item');
+      if (!b && !item) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const v = fbView();
+      if (b) {
+        if (b.disabled) return;
+        const act = b.dataset.fb;
+        if (act === 'add') fbAddObject(b.dataset.kind, UG.targetOf(FB.layout.objects, FB.selected));
+        else if (act === 'place') fbAddObject('unit', null, b.dataset.unit);
+        else if (act === 'remove') { const id = FB.selected; FB.selected = null; fbRebuild(() => { FB.layout = UG.removeFrom(FB.layout, id); }); }
+        else if (act === 'resetinside') fbRebuild(() => { FB.layout = UG.resetInside(FB.layout, FB.selected) || FB.layout; });
+        else if (act === 'moveout' || act === 'putback') {
+          fbSync();
+          const next = act === 'moveout' ? UG.moveOut(FB.layout, FB.selected) : UG.putBack(FB.layout, FB.selected, v);
+          if (!next) { FB.note = 'That would nest too deep.'; fbRedraw(); return; }
+          fbRebuild(() => { FB.layout = next; });
+        } else if (act === 'wider' || act === 'narrower') {
+          const n = fbPositions().get(FB.selected);
+          const at = UG.find(FB.layout.objects, FB.selected);
+          const cols = at && at.parent ? at.parent.w : UG.COLUMNS;
+          if (n) fbMoveSelected({ w: Math.max(1, Math.min(cols - n.x, n.w + (act === 'wider' ? 1 : -1))) });
+        } else if (act === 'unselect') { FB.selected = null; fbRedraw(); }
+        else if (act === 'starter') { FB.selected = null; fbLoad(null); FB.note = 'The starter: Done saves it as your layout.'; fbRedraw(); }
+        else if (act === 'revert') { FB.selected = null; fbLoad(FB.saved); FB.source = FB.saved ? 'own' : 'starter'; fbRedraw(); }
+        return;
+      }
+      // The click that ends a drag or resize selects nothing.
+      if (performance.now() - FB.movedAt < 300) return;
+      if (item.gridstackNode) { FB.selected = item.gridstackNode.id; fbRedraw(); }
+    }, true);
+
+    $('fleet-full').addEventListener('change', (e) => {
+      const f = e.target.closest('[data-fbpos]');
+      if (!f || !FB.editing || !FB.selected) return;
+      const n = Number(f.value);
+      if (Number.isFinite(n)) fbMoveSelected({ [f.dataset.fbpos]: Math.round(n) });
+    });
+
+    $('fleet-full').addEventListener('input', (e) => {
+      const f = e.target.closest('[data-fbset]');
+      if (!f || !FB.editing) return;
+      const val = f.value;
+      if (f.dataset.fbset === 'cell') { fbRebuild(() => { FB.layout.cell = Number(val); }); return; }
+      const at = FB.selected && UG.find(FB.layout.objects, FB.selected);
+      if (!at) return;
+      const o = at.object;
+      FB.changed = true;
+      UG.touchParent(FB.layout.objects, o.id);
+      if (f.dataset.fbset === 'label') o.label = val.slice(0, UG.LABEL_MAX);
+      else o[f.dataset.fbset] = val || undefined;
+      // A unit shown anew gets the default grid of the unit it now shows.
+      if (f.dataset.fbset === 'bind' && o.kind === 'unit' && UG.untouched(o)) { fbRebuild(() => { FB.layout = UG.resetInside(FB.layout, o.id) || FB.layout; }); return; }
+      const v = fbView();
+      fbDraw(o, at.depth, at.parent, v);
+      fbFit();
+    });
+
+    // The palette's objects drag onto the board or a unit's grid: the grid under the drop is the target.
+    $('fleet-full').addEventListener('dragstart', (e) => {
+      const p = FB.editing && e.target.closest('.pitem');
+      if (!p) return;
+      e.dataTransfer.setData('text/x-fb-kind', p.dataset.kind);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    const fbDropTarget = (e) => {
+      const g = FB.editing && e.target.closest && e.target.closest('#fb-board, #fb-board .grid-stack.sub');
+      if (!g) return null;
+      if (!g.dataset.owner) return { object: null, depth: -1 };
+      const at = UG.find(FB.layout.objects, g.dataset.owner);
+      return at ? { object: at.object, depth: at.depth } : null;
+    };
+    $('fleet-full').addEventListener('dragover', (e) => {
+      if (!FB.editing || ![...e.dataTransfer.types].includes('text/x-fb-kind')) return;
+      if (fbDropTarget(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    });
+    $('fleet-full').addEventListener('drop', (e) => {
+      const kind = FB.editing && e.dataTransfer.getData('text/x-fb-kind');
+      const target = kind && fbDropTarget(e);
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!UG.holds(target, fbView()).includes(kind)) { FB.note = `${UG.KINDS[kind].label} cannot go in ${fbTitle(target.object, fbView())}.`; fbRedraw(); return; }
+      fbAddObject(kind, target);
+    }, true);
+
+    // Esc selects the unit around the selection, then nothing.
+    document.addEventListener('keydown', (e) => {
+      if (!FB.editing || e.key !== 'Escape' || !FB.selected || $('dlg').open) return;
+      const at = UG.find(FB.layout.objects, FB.selected);
+      FB.selected = at && at.parent ? at.parent.id : null;
+      fbRedraw();
+    });
+    window.addEventListener('resize', () => { if (FB.editing && !fbEditable()) fbLeave(); });
+
+
+    // ------------------------------------------------------------ relay
+
+    // This machine's relay status (PROTOCOL.md section 5); `via` names the game PC while this
+    // companion's pages are bridged to it.
+    let relay = null, relayAt = 0, relayTimer = null, relayAsked = location.hash === '#relay', relayLine = '', relayPairing = false;
+    const RELAY_MODES = [
+      ['off', 'Off', 'Hardpoint runs on this PC only.'],
+      ['relay', 'Relay to a companion', 'This is the game PC: Hardpoint shrinks to a small bar (Stop relay, Settings, Exit relay mode) and a paired laptop or tablet shows the dashboard and sends the actions.'],
+      ['companion', 'Be a companion', 'This laptop or tablet shows the game PC\'s Hardpoint: status, dashboards and the fleet panel come from the game PC, and actions run there.'],
+    ];
+    function relayTools() {
+      if (!relay) return '';
+      const via = relay.via ? `<span class="via" title="Everything on this page comes from ${esc(relay.via)}">via ${esc(relay.via)}</span>` : '';
+      const st = relay.mode === 'off' ? '' : `<span class="fdot" data-link="${relay.state === 'up' ? 'online' : ['connecting', 'listening'].includes(relay.state) ? 'connecting' : 'offline'}" aria-hidden="true"></span>`;
+      return `${via}<button class="btn ${$('relay-panel').hidden ? '' : 'on'}" data-do="relay" type="button" title="Relay this PC to a companion, or be one">${st}Relay</button>`;
+    }
+    function onRelay(m) {
+      relay = m; relayAt = Date.now();
+      const down = relay.mode === 'companion' && !relay.via;
+      document.body.classList.toggle('relay-down', down);
+      const banner = $('relay-banner');
+      banner.hidden = !down;
+      if (down) {
+        const who = relay.peer ? esc(relay.peer.name) : 'the game PC';
+        banner.innerHTML = `<b>${relay.peer ? `Lost ${who}` : 'Not paired with a game PC'}</b><span>${relay.peer ? `Waiting for ${who} to connect; actions are off until it does.` : 'Pair this companion from the game PC to see its Hardpoint here.'}</span><button class="btn" data-rl="open" type="button">Relay settings</button>`;
+        if (!dash) showEmpty('This PC is a companion: the dashboard comes from the game PC once it connects.');
+      }
+      if (dash) live('bar', renderBar);
+      if (relayAsked) { relayAsked = false; openRelay(); }
+      else if (!$('relay-panel').hidden) live('relay-panel', renderRelay);
+    }
+    function openRelay() {
+      for (const id of ['fleet-fields', 'fleet-join', 'fleet-consent', 'fleet-host']) $(id).hidden = true;
+      $('relay-panel').hidden = false;
+      renderRelay(true);
+      if (dash) renderBar();
+      clearInterval(relayTimer);
+      relayTimer = setInterval(() => { if ($('relay-panel').hidden) { clearInterval(relayTimer); return; } tickRelayCode(); }, 1000);
+    }
+    function relayLeft() {
+      const p = relay && relay.pairing;
+      return p ? Math.max(0, p.leftMs - (Date.now() - relayAt)) : 0;
+    }
+    function tickRelayCode() {
+      const el = $('rl-left');
+      if (!el) return;
+      const s = Math.ceil(relayLeft() / 1000);
+      el.textContent = s > 0 ? `Good for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : 'The code ran out: show a new one';
+    }
+    const when = (ms) => { try { return new Date(ms).toLocaleString(); } catch { return ''; } };
+    function relayPeer(label) {
+      const p = relay.peer;
+      if (!p) return '';
+      return `<h4>${label}</h4><div class="peer"><b>${esc(p.name)}</b><small>Key ${esc(p.fingerprint)}${p.lastAddress ? ` · at ${esc(p.lastAddress)}` : ''}${p.pairedAt ? ` · paired ${esc(when(p.pairedAt))}` : ''}</small></div>` +
+        '<div class="row"><button class="btn" data-rl="rename" type="button">Rename</button><button class="btn danger" data-rl="unpair" type="button">Unpair</button></div>';
+    }
+    function renderRelay(fresh) {
+      const el = $('relay-panel');
+      if (!relay) { el.innerHTML = '<h3>Relay</h3><p class="note">Connecting to Hardpoint...</p>'; return; }
+      const keep = !fresh && $('rl-address') ? { address: $('rl-address').value, code: $('rl-code').value } : { address: (relay.peer && relay.peer.lastAddress) || '', code: '' };
+      const chosen = relay.relayAfterPairing ? 'relay' : relay.mode;
+      const modes = RELAY_MODES.map(([id, label, text]) => `<label class="${chosen === id ? 'on' : ''}"><input type="radio" name="rl-mode" value="${id}" ${chosen === id ? 'checked' : ''} /><span><b>${esc(label)}</b><small>${esc(text)}</small></span></label>`).join('');
+      let body = '';
+      if (relay.mode === 'companion') {
+        const p = relay.pairing;
+        let pairing;
+        if (p && p.pending) {
+          pairing = `<div class="peer"><b>${esc(p.pending.name)}</b> wants to pair<small>Key ${esc(p.pending.fingerprint)} · from ${esc(p.pending.lastAddress || '')}</small></div>` +
+            `<p class="note">It typed the right code. Pair to let it show its Hardpoint here${relay.peer ? `, in place of ${esc(relay.peer.name)}` : ''}.</p>` +
+            '<div class="row"><button class="btn primary" data-rl="accept" type="button">Pair</button><button class="btn" data-rl="refuse" type="button">Cancel</button></div>';
+        } else if (p && p.burned) {
+          pairing = '<p class="bad">Pairing stopped after 3 wrong codes.</p><div class="row"><button class="btn primary" data-rl="code" type="button">New code</button><button class="btn" data-rl="cancel" type="button">Stop pairing</button></div>';
+        } else if (p && p.code && relayLeft() > 0) {
+          pairing = `<p class="note">On the game PC, open Relay, choose Relay to a companion and type this address and code.</p><div class="code">${esc(p.code)}</div><p class="note" id="rl-left"></p>` +
+            (p.failures ? `<p class="bad">${p.failures} of 3 wrong codes</p>` : '') +
+            '<div class="row"><button class="btn" data-rl="code" type="button">New code</button><button class="btn" data-rl="cancel" type="button">Stop pairing</button></div>';
+        } else {
+          pairing = `<p class="note">Show a code, then type it on the game PC. The code is good for 2 minutes and only while it is shown here.</p><div class="row"><button class="btn primary" data-rl="code" type="button">${p ? 'New code' : 'Show pairing code'}</button></div>`;
+        }
+        const addrs = relay.addresses.length ? relay.addresses.map((a) => `<b class="mono">${esc(a)}:${relay.port}</b>`).join(', ') : `this PC's address, port <b class="mono">${relay.port}</b>`;
+        body = `<h4>State</h4><p class="state">${esc(relay.text)}</p>` +
+          `<h4>Pair with the game PC</h4><p class="note">The game PC dials ${addrs}.</p>${pairing}` +
+          '<p class="note">Windows asks once to let Hardpoint accept connections: allow it on private networks.</p>' +
+          relayPeer('Paired game PC');
+      } else {
+        const paired = relay.peer;
+        const linked = relay.state === 'up' || relay.state === 'connecting';
+        body = `<h4>State</h4><p class="state">${relay.relayAfterPairing ? 'Relaying starts once a companion is paired below.' : esc(relay.text)}</p>` +
+          (relay.mode === 'relay' && paired ? `<div class="row"><button class="btn" data-rl="${linked ? 'disconnect' : 'connect'}" type="button">${linked ? 'Disconnect' : 'Connect'}</button></div>` : '') +
+          relayPeer('Paired companion') +
+          (paired && !relayPairing
+            ? `<div class="row"><button class="btn" data-rl="pair-form" type="button">Pair another companion</button></div><p class="note">${esc(relayLine)}</p>`
+            : `<h4>${paired ? 'Pair another companion' : 'Pair a companion'}</h4>` +
+              '<p class="note">On the laptop or tablet choose Be a companion and Show pairing code, then type the address and code it shows.</p>' +
+              '<div class="pair-row"><label class="stack">Companion address <input id="rl-address" autocomplete="off" spellcheck="false" placeholder="its name or IP; :port if not 47521" /></label>' +
+              '<label class="stack">Pairing code <input id="rl-code" autocomplete="off" inputmode="numeric" maxlength="11" placeholder="8 digits" /></label></div>' +
+              '<div class="row"><button class="btn primary" data-rl="pair" type="button">Pair</button>' +
+              (paired ? '<button class="btn" data-rl="address" type="button">Only change the address</button>' : '') + '</div>' +
+              `<p class="note" id="rl-pairing">${esc(relayLine)}</p>`);
+      }
+      el.innerHTML = `<h3>Relay</h3><div class="modes">${modes}</div>${body}` +
+        `<h4>This PC</h4><p class="note"><b>${esc(relay.name)}</b> · relay key ${esc(relay.fingerprint)} · Hardpoint ${esc(relay.version)}. Both machines need the same version.</p>` +
+        '<div class="row"><button class="btn" data-rl="close" type="button">Close</button></div>';
+      if ($('rl-address')) { $('rl-address').value = keep.address; $('rl-code').value = keep.code; }
+      tickRelayCode();
+    }
+    function relayCall(msg) { return new Promise((res) => send(msg, (r, error) => res(error ? { problems: [error] } : r))); }
+    document.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-rl]');
+      if (!b) return;
+      const act = b.dataset.rl;
+      if (act === 'open') { openRelay(); return; }
+      if (act === 'close') { $('relay-panel').hidden = true; if (dash) renderBar(); return; }
+      if (act === 'pair-form') { relayPairing = true; relayLine = ''; renderRelay(); return; }
+      if (act === 'code') send({ type: 'relay.code' });
+      else if (act === 'cancel') send({ type: 'relay.cancel' });
+      else if (act === 'accept' || act === 'refuse') send({ type: 'relay.accept', pair: act === 'accept' });
+      else if (act === 'connect' || act === 'disconnect') send({ type: `relay.${act}` });
+      else if (act === 'address') send({ type: 'relay.address', address: $('rl-address').value });
+      else if (act === 'rename') {
+        const name = await ask('Rename', `<label class="check" style="display:grid;gap:6px">Name <input id="rl-name" maxlength="64" value="${esc(relay.peer.name)}" /></label>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Rename', value: 'ok', cls: 'primary' }]);
+        if (name === 'ok') send({ type: 'relay.rename', name: $('rl-name') ? $('rl-name').value : relay.peer.name });
+      } else if (act === 'unpair') {
+        const c = await ask('Unpair', `<p>Forget ${esc(relay.peer.name)}? The link closes, and it needs pairing again with a new code.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Unpair', value: 'unpair', cls: 'danger' }]);
+        if (c === 'unpair') send({ type: 'relay.unpair' });
+      } else if (act === 'pair') {
+        if (relay.peer) {
+          const c = await ask('Replace companion', `<p>Pair a new companion in place of ${esc(relay.peer.name)}? Only one companion is paired at a time.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Replace', value: 'pair', cls: 'primary' }]);
+          if (c !== 'pair') return;
+        }
+        const showLine = (text) => { relayLine = text; if ($('rl-pairing')) $('rl-pairing').textContent = text; };
+        showLine('Pairing: press Pair on the companion...');
+        b.disabled = true;
+        const r = await relayCall({ type: 'relay.pair', address: $('rl-address').value, code: $('rl-code').value });
+        b.disabled = false;
+        const ok = r && r.problems && !r.problems.length;
+        showLine(ok ? `Paired with ${r.peer.name}.` : (r && r.problems ? r.problems.join(' ') : ''));
+        if (ok) { relayPairing = false; renderRelay(true); notice(`Paired with ${r.peer.name}`, 'ok'); }
+      }
+    });
+    document.addEventListener('change', (e) => {
+      if (e.target.name !== 'rl-mode') return;
+      // Becoming a companion closes this page's connection; it comes back bridged.
+      // A focused radio would hold the panel's live redraws, so the new mode would not show.
+      e.target.blur();
+      send({ type: 'relay.mode', mode: e.target.value }, (r) => { if (r && r.problems && r.problems.length) notice(r.problems.join(' '), 'bad'); live('relay-panel', renderRelay); });
+    });
+
+    // ------------------------------------------------------------ fleet: joining
+
+    function openFleetJoin() {
+      fjInspect = null; fjPreview = null;
+      closeFleetOverlays('fleet-join');
+      renderFleetJoin(true);
+      $('fleet-join').hidden = false;
+      const inv = $('fj-invite');
+      if (inv && !fleet.link.fleets.length) inv.focus();
+    }
+    function renderFleetJoin(fresh) {
+      const el = $('fleet-join');
+      if (!fleet) return;
+      const keep = !fresh && $('fj-invite') ? { invite: $('fj-invite').value, handle: $('fj-handle').value } : { invite: '', handle: (fleet.link.fleets[0] || {}).handle || '' };
+      const current = fleet.link.fleet ? fleet.link.fleet.key : null;
+      const known = fleet.link.fleets.map((f) => {
+        const here = f.key === current && fleet.link.state !== 'none';
+        return `<li><span class="fl"><b>${esc(f.event || f.address)}</b><small>${f.hosted ? 'CIC · ' : ''}${esc(f.address)} · key ${esc(f.fingerprint)} · as ${esc(f.handle)}</small></span>` +
+          `<span class="row">${here ? `<span class="tag">${esc(fleet.link.state === 'online' ? 'Connected' : fleet.link.state)}</span>` : `<button class="btn" data-fj="connect" data-key="${esc(f.key)}" type="button">Connect</button>`}` +
+          `<button class="btn danger" data-fj="leave" data-key="${esc(f.key)}" type="button" title="Leave the event and forget it here">Leave</button></span></li>`;
+      }).join('');
+      el.innerHTML = '<h3>Join a fleet</h3>' +
+        '<label class="stack">Connection code or invite <textarea id="fj-invite" rows="3" spellcheck="false" autocomplete="off" placeholder="cic://host:port?key=...&amp;connect=..."></textarea></label>' +
+        `<div id="fj-who">${fjWhoHtml()}</div>` +
+        `<label class="stack">Your handle <input id="fj-handle" maxlength="40" autocomplete="off" placeholder="Peer to peer only: a CIC account brings its own" /></label>` +
+        '<p class="note">Paste the connection code from Connect Hardpoint in the CIC portal (or a host player\'s invite). It pins the server\'s identity key: Hardpoint connects only to the server that proves it holds that key. The code is used once and never kept; Hardpoint keeps the host and server key to reconnect.</p>' +
+        '<div class="row"><button class="btn primary" data-fj="join" type="button">Join</button><button class="btn" data-fj="close" type="button">Close</button></div>' +
+        (known ? `<h4>Fleets joined</h4><ul class="flist">${known}</ul>` : '') +
+        `<h4>Your fleet identity</h4><p class="note">Fingerprint <b class="mono">${esc(fleet.me.fingerprint)}</b>. Hosts see this beside your handle; roles and bans follow this key, not the handle.</p>` +
+        `<p class="note mono fid" title="Your member id">${esc(fleet.me.member)}</p>`;
+      $('fj-invite').value = keep.invite;
+      $('fj-handle').value = keep.handle;
+    }
+    /** The pasted invite, as the service read it: who the server is, before anything is sent. */
+    let fjInspect = null, fjPreview = null, fjTimer = 0;
+    function fjWhoHtml() {
+      const i = fjInspect;
+      if (!i) return '';
+      if (i.hosted) return `<div class="fjwho"><span>A CIC relay at <b>${esc(i.address)}</b>, key <b class="mono">${esc(i.fingerprint)}</b>. Who sees your card follows your seat in the event.</span></div>`;
+      const host = i.hostName ? `<b>${esc(i.hostName)}</b>` : 'the host';
+      const sent = fleet.link.consent.length ? `You send ${fleet.link.consent.length} of ${fleet.fields.length} fields (What I send).` : 'You send no fields yet: only your handle and fleet key (What I send).';
+      return `<div class="fjwho"><span>Hosted by ${host}${i.hostName ? ' (as the invite names them)' : ''} at <b>${esc(i.address)}</b>, key <b class="mono">${esc(i.fingerprint)}</b>. Hardpoint connects only if that host proves this key.</span>` +
+        `<span><b>Who sees your card:</b> the host, who reads every card that passes, and every member of this fleet. Each of them sees only the fields you send.</span><span class="note">${sent}</span>` +
+        '<div class="row"><button class="btn" data-fj="preview" type="button" title="Your card exactly as it would leave this PC now">See it first</button></div>' +
+        (fjPreview ? `<div class="fcard" data-st="${esc(fjPreview.status)}">${fleetCardInner(fjPreview)}</div>` : '') + '</div>';
+    }
+    function fjInspectNow() {
+      const text = $('fj-invite') ? $('fj-invite').value.trim() : '';
+      if (!text) { fjInspect = null; if ($('fj-who')) $('fj-who').innerHTML = ''; return; }
+      send({ type: 'fleet.inspect', invite: text }, (r) => {
+        fjInspect = r && r.invite ? r.invite : null;
+        if ($('fj-who')) $('fj-who').innerHTML = fjWhoHtml();
+      });
+    }
+    $('fleet-join').addEventListener('input', (e) => {
+      if (e.target.id !== 'fj-invite') return;
+      fjPreview = null;
+      clearTimeout(fjTimer);
+      fjTimer = setTimeout(fjInspectNow, 250);
+    });
+    $('fleet-join').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-fj]');
+      if (!b) return;
+      const act = b.dataset.fj;
+      if (act === 'close') { $('fleet-join').hidden = true; return; }
+      if (act === 'preview') {
+        const r = await new Promise((res) => send({ type: 'fleet.preview' }, res));
+        if (r && r.card) { const c = r.card; fjPreview = { ...c, status: c.state || (c.sharing.character ? 'UP' : 'UNKNOWN'), roles: [], me: true }; }
+        if ($('fj-who')) $('fj-who').innerHTML = fjWhoHtml();
+        return;
+      }
+      if (act === 'join') {
+        const r = await new Promise((res) => send({ type: 'fleet.join', invite: $('fj-invite').value, handle: $('fj-handle').value }, res));
+        if (r && r.problems && !r.problems.length) { $('fleet-join').hidden = true; setFleetOpen(true); }
+      } else if (act === 'connect') send({ type: 'fleet.connect', key: b.dataset.key });
+      else if (act === 'leave') {
+        const f = fleet.link.fleets.find((x) => x.key === b.dataset.key);
+        const c = await ask('Leave fleet', `<p>Leave ${esc(f ? f.event || f.address : 'this fleet')}? You stop sending and receiving cards, and joining again needs a new invite.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Leave', value: 'leave', cls: 'danger' }]);
+        if (c === 'leave') send({ type: 'fleet.leave', key: b.dataset.key });
+      }
+    });
+    $('fleet-join').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'fj-handle' && !e.isComposing) { e.preventDefault(); $('fleet-join').querySelector('[data-fj="join"]').click(); } });
+
+
+    // ------------------------------------------------------------ fleet: hosting (peer to peer)
+
+    /** Hosting is the game PC's own: never from a companion's page. */
+    const canHost = () => Boolean(fleet && fleet.host) && !(relay && (relay.via || relay.mode === 'companion'));
+    let fhPublic = null;
+    function openFleetHost() {
+      closeFleetOverlays('fleet-host');
+      fhPublic = null;
+      renderFleetHost(true);
+      $('fleet-host').hidden = false;
+    }
+    function renderFleetHost(fresh) {
+      const el = $('fleet-host');
+      const h = fleet && fleet.host;
+      if (!h) return;
+      const keep = !fresh && $('fh-handle') ? { handle: $('fh-handle').value, port: $('fh-port').value } : null;
+      if (!fresh && $('fh-public')) fhPublic = $('fh-public').value;
+      const reach = `<h4>Reaching this PC</h4><p class="note">On your network players use the LAN invite. Players outside it need TCP port ${esc(String(h.port))} forwarded to this PC on your router (Hardpoint does not open router ports itself), or a VPN to your network; then add your public address or DNS name for their invite.</p>` +
+        '<p class="note">Windows will ask to allow Hardpoint on private networks the first time you host. Allow it, and leave public unticked.</p>';
+      const bans = h.bans.length ? `<h4>Banned (${h.bans.length})</h4><ul class="flist">${h.bans.map((b) =>
+        `<li><span class="fl"><b>${esc(b.handle)}</b><small>key ${esc(b.fingerprint)} · since ${esc(fmtWhen(b.at))}</small></span>` +
+        `<span class="row"><button class="btn" data-fh="lift" data-key="${esc(b.key)}" type="button" title="Let this fleet key join again">Lift</button></span></li>`).join('')}</ul>` : '';
+      if (!h.hosting) {
+        el.innerHTML = '<h3>Host a fleet</h3>' +
+          '<p class="note">Host a peer-to-peer fleet from this PC: friends join with your invite and everyone sees everyone\'s card, each with only the fields its sender chose. Groups are each player\'s own, made in their own fleet panel. Hosting leaves any other fleet you are connected to.</p>' +
+          '<div class="pair"><label class="stack">Your handle <input id="fh-handle" maxlength="40" autocomplete="off" /></label>' +
+          '<label class="stack">Port <input id="fh-port" type="number" min="1024" max="65535" /></label></div>' +
+          '<div class="row"><button class="btn primary" data-fh="start" type="button">Start hosting</button><button class="btn" data-fh="close" type="button">Close</button></div>' +
+          '<p class="note">The session lasts while Hardpoint stays open: after a restart players need a new invite. Bans are kept.</p>' + reach + bans;
+        $('fh-handle').value = keep ? keep.handle : (h.handle || (fleet.link.fleets[0] || {}).handle || '');
+        $('fh-port').value = keep ? keep.port : String(h.port);
+        return;
+      }
+      const others = h.members.filter((m) => !m.host).length;
+      const members = h.members.map((m) =>
+        `<li><span class="fl"><b>${esc(m.handle)}${m.host ? ' <span class="tag">YOU, HOST</span>' : ''}</b><small>key ${esc(m.fingerprint)} · ${m.connected ? 'connected' : 'not connected'}</small></span>` +
+        (m.host ? '' : `<span class="row"><button class="btn" data-fh="remove" data-m="${esc(m.member)}" type="button" title="A bad connection: drop them; they can join again with the current invite">Remove</button>` +
+          `<button class="btn danger" data-fh="kick" data-m="${esc(m.member)}" type="button" title="A bad player: drop and ban them, and change the code">Kick</button></span>`) + '</li>').join('');
+      const pub = fhPublic !== null ? fhPublic : (h.publicAddress || '');
+      el.innerHTML = '<h3>Hosting</h3>' +
+        `<p class="hstate">Hosting on port <b>${esc(String(h.port))}</b> as <b>${esc(h.handle)}</b>, ${h.members.length} of ${h.maxMembers} members. Your key <b class="mono">${esc(h.fingerprint)}</b>: joiners see it before they share.</p>` +
+        `<h4>Invite</h4><p class="note">Code <span class="code">${esc(h.code)}</span></p>` +
+        `<label class="stack">On your network${h.lanAddress ? ` (${esc(h.lanAddress)})` : ''} <textarea id="fh-invite" rows="3" readonly spellcheck="false">${esc(h.invite)}</textarea></label>` +
+        '<div class="row"><button class="btn primary" data-fh="copy" data-t="fh-invite" type="button">Copy invite</button><button class="btn" data-fh="rotate" type="button" title="The old invite stops working at once; members already in stay">New code</button></div>' +
+        `<label class="stack">Public address or DNS name (optional) <input id="fh-public" maxlength="253" autocomplete="off" placeholder="such as myhost.example.org" value="${esc(pub)}" /></label>` +
+        '<div class="row"><button class="btn" data-fh="address" type="button">Use this address</button></div>' +
+        (h.publicInvite ? `<label class="stack">From outside your network <textarea id="fh-public-invite" rows="3" readonly spellcheck="false">${esc(h.publicInvite)}</textarea></label><div class="row"><button class="btn" data-fh="copy" data-t="fh-public-invite" type="button">Copy public invite</button></div>` : '') +
+        `<h4>Members (${others} besides you)</h4><ul class="flist">${members}</ul>` +
+        '<p class="note">Remove is for a bad connection: they drop and can join again with the current invite. Kick is for a bad player: they drop, their fleet key is banned, and the code changes so the old invite is dead; members already in stay.</p>' +
+        bans + reach +
+        '<div class="row"><button class="btn danger" data-fh="stop" type="button">Stop hosting</button><button class="btn" data-fh="close" type="button">Close</button></div>';
+    }
+    async function hostCall(msg) {
+      const r = await new Promise((res) => send(msg, res));
+      if (r && r.problems && r.problems.length) notice(r.problems.join(' '), 'bad');
+      return r && r.problems && !r.problems.length;
+    }
+    $('fleet-host').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-fh]');
+      if (!b) return;
+      const act = b.dataset.fh;
+      const who = (m) => ((fleet.host.members.find((x) => x.member === m) || {}).handle || 'this member');
+      if (act === 'close') $('fleet-host').hidden = true;
+      else if (act === 'start') {
+        const port = Number($('fh-port').value);
+        b.disabled = true;
+        if (await hostCall({ type: 'fleet.host.start', handle: $('fh-handle').value, port })) { renderFleetHost(true); setFleetOpen(true); }
+        b.disabled = false;
+      } else if (act === 'stop') {
+        const c = await ask('Stop hosting', '<p>Stop hosting? Every member is dropped and the session ends: hosting again makes a new invite. Bans are kept.</p>', [{ text: 'Cancel', value: 'cancel' }, { text: 'Stop hosting', value: 'stop', cls: 'danger' }]);
+        if (c === 'stop' && await hostCall({ type: 'fleet.host.stop' })) renderFleetHost(true);
+      } else if (act === 'rotate') {
+        if (await hostCall({ type: 'fleet.host.rotate' })) notice('New code: the old invite no longer works', 'ok');
+      } else if (act === 'address') {
+        if (await hostCall({ type: 'fleet.host.address', address: $('fh-public').value })) fhPublic = null;
+      } else if (act === 'copy') {
+        const t = $(b.dataset.t);
+        try { await navigator.clipboard.writeText(t.value); notice('Invite copied', 'ok'); } catch { t.select(); notice('Select the invite and copy it', 'bad'); }
+      } else if (act === 'remove') {
+        const c = await ask('Remove member', `<p>Remove ${esc(who(b.dataset.m))}? They drop, and can join again with the current invite.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Remove', value: 'remove', cls: 'primary' }]);
+        if (c === 'remove') hostCall({ type: 'fleet.host.remove', member: b.dataset.m });
+      } else if (act === 'kick') {
+        const c = await ask('Kick member', `<p>Kick ${esc(who(b.dataset.m))}? They drop, their fleet key is banned until you lift it, and the code changes: anyone who still needs to join needs the new invite. Members already in stay.</p>`, [{ text: 'Cancel', value: 'cancel' }, { text: 'Kick and ban', value: 'kick', cls: 'danger' }]);
+        if (c === 'kick') hostCall({ type: 'fleet.host.kick', member: b.dataset.m });
+      } else if (act === 'lift') hostCall({ type: 'fleet.host.lift', key: b.dataset.key });
+    });
+    $('fleet-host').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'fh-handle' && !e.isComposing) { e.preventDefault(); const b = $('fleet-host').querySelector('[data-fh="start"]'); if (b) b.click(); } });
+
+    // ------------------------------------------------------------ fleet: what I send
+
+    function openFleetConsent() {
+      closeFleetOverlays('fleet-consent');
+      renderFleetConsent();
+      $('fleet-consent').hidden = false;
+    }
+    function renderFleetConsent(preview) {
+      const el = $('fleet-consent');
+      const on = new Set(fleet.link.consent);
+      const groups = CONSENT_GROUPS.map(([consent, label]) => {
+        const fields = fleet.fields.filter((f) => f.consent === consent);
+        const n = fields.filter((f) => on.has(f.id)).length;
+        const all = n === fields.length;
+        return `<fieldset><legend><label><input type="checkbox" data-fc-group="${esc(consent)}" ${all ? 'checked' : ''} ${n && !all ? 'data-mixed="1"' : ''} /> ${esc(label)}</label></legend>` +
+          fields.map((f) => `<label><input type="checkbox" data-fc="${esc(f.id)}" ${on.has(f.id) ? 'checked' : ''} /> ${esc(f.label)}</label>`).join('') + '</fieldset>';
+      }).join('');
+      el.innerHTML = '<h3>What I send</h3>' +
+        `<p class="note">Choose field by field what your card carries. Nothing is sent until you turn it on, and a field you leave off never leaves this PC: no host, relay, admin or admiral can receive it. ${fleet.link.consent.length ? `${fleet.link.consent.length} of ${fleet.fields.length} fields on.` : 'Everything is off.'}</p>` +
+        `<div class="fcgroups">${groups}</div>` +
+        '<p class="note">Detail fields go only to someone who has your detail view open. Others see the intersection of what you send, what their role allows and what they asked for.</p>' +
+        '<div class="row"><button class="btn" data-fc-do="preview" type="button" title="Your card exactly as it would leave this PC now">See it first</button><button class="btn primary" data-fc-do="close" type="button">Done</button></div>' +
+        (preview ? `<div class="fpreview"><h4>Your card as others receive it</h4><div class="fcard" data-st="${esc(preview.status)}">${fleetCardInner(preview)}</div>` +
+          `<p class="note">${Object.keys(preview.fields).length ? `Fields: ${esc(Object.keys(preview.fields).map((id) => (fleet.fields.find((f) => f.id === id) || {}).label || id).join(', '))}.` : 'No fields: only your handle and fleet key go out.'}${preview.state ? ` State: ${esc(preview.state)}.` : ''}</p></div>` : '');
+      for (const x of el.querySelectorAll('[data-mixed]')) x.indeterminate = true;
+    }
+    async function fleetPreview() {
+      const r = await new Promise((res) => send({ type: 'fleet.preview' }, res));
+      if (!r || !r.card) return;
+      const c = r.card;
+      const status = c.state || (c.sharing.character ? 'UP' : 'UNKNOWN');
+      renderFleetConsent({ ...c, status, roles: [], me: true });
+    }
+    $('fleet-consent').addEventListener('change', async (e) => {
+      const box = e.target;
+      const on = new Set(fleet.link.consent);
+      if (box.dataset.fcGroup) for (const f of fleet.fields.filter((x) => x.consent === box.dataset.fcGroup)) { if (box.checked) on.add(f.id); else on.delete(f.id); }
+      else if (box.dataset.fc) { if (box.checked) on.add(box.dataset.fc); else on.delete(box.dataset.fc); }
+      else return;
+      const fields = fleet.fields.map((f) => f.id).filter((id) => on.has(id));
+      await new Promise((res) => send({ type: 'fleet.consent', fields }, res));
+      fleet.link.consent = fields;
+      const previewing = Boolean($('fleet-consent').querySelector('.fpreview'));
+      if (previewing) fleetPreview(); else renderFleetConsent();
+    });
+    $('fleet-consent').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-fc-do]');
+      if (!b) return;
+      if (b.dataset.fcDo === 'close') $('fleet-consent').hidden = true;
+      else fleetPreview();
+    });
 
     // ------------------------------------------------------------ fleet: detail view and card fields
 
     function openFleetDetail(id) {
       fleetDetail = id;
-      $('fleet-fields').hidden = true;
+      closeFleetOverlays('fleet-detail');
       send({ type: 'fleet.detail', member: id });
       renderFleetDetail();
       $('fleet-detail').hidden = false;
@@ -2306,13 +4142,13 @@
     function renderFleetDetail() {
       const el = $('fleet-detail');
       const m = fleetMember(fleetDetail);
-      if (!m || !fleetShown()) { closeFleetDetail(); return; }
+      if (!m || !(fleetShown() || fleetTabShown())) { closeFleetDetail(); return; }
       const f = m.fields;
       const kv = (pairs) => pairs.filter(([id]) => f[id]).map(([id, label]) => `<span>${esc(label)}</span><span class="t-${esc(f[id].tone)}">${esc(f[id].text)}</span>`).join('');
       const bars = (pairs) => pairs.map(([id, label]) => fleetBar(f[id], label)).join('');
       const shares = [m.sharing.ship && 'ship status', m.sharing.character && 'character status', m.sharing.detail && 'detail'].filter(Boolean).join(', ') || 'nothing';
       const shipBars = bars([['ship.shields', 'Shields'], ['ship.hull', 'Hull'], ['ship.fuel', 'Hydrogen'], ['ship.quantum', 'Quantum']]);
-      const shipKv = kv([['ship.name', 'Ship'], ['ship.mode', 'Master mode'], ['ship.aboard', 'In a ship'], ['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons ready']]);
+      const shipKv = kv([['ship.name', 'Ship'], ['ship.class', 'Ship class'], ['ship.seat', 'Seat'], ['ship.crew_role', 'Crew role'], ['ship.mode', 'Master mode'], ['ship.aboard', 'In a ship'], ['ship.cautions', 'Cautions'], ['ship.weapons', 'Weapons ready']]);
       const charBars = bars([['char.health', 'Health'], ['char.oxygen', 'Oxygen']]);
       const charKv = kv([['char.activity', 'Activity']]);
       const faces = f['detail.shield_faces'] && f['detail.shield_faces'].items;
@@ -2325,8 +4161,9 @@
           (faces || power || detailKv ? '' : '<p class="note">Waiting for the detail fields.</p>');
       const groups = [{ id: '', name: 'Ungrouped' }, ...fleet.view.groups];
       el.innerHTML = `<div class="dhead"><h3>${esc(m.handle)}</h3>${chip(m.status)}<button class="btn" data-fd="close" type="button">Close</button></div>` +
-        `<p class="note">Shares ${esc(shares)} · ${esc(updatedAgo(m.ageMs))}${fleet.demo ? ' · DEMO: mock peer from a recording' : ''}</p>` +
-        `<label>Group <select id="fd-group">${groups.map((g) => opt(g.id, g.name, (m.group || '') === g.id)).join('')}</select></label>` +
+        `<p class="note">Shares ${esc(shares)} · ${esc(updatedAgo(m.ageMs))}${m.me ? ' · your own card' : ''}</p>` +
+        (m.ship ? `<p class="note">Ship card ${esc(m.sourceLabel || '')}</p>` : fleetEvent() ? `<p class="note">Unit: ${esc(fleetGroupName(m.group))}${m.roles.length ? ` · ${esc(m.roles.map((r) => (ROLE[r] || [, r])[1]).join(', '))}` : ''}</p>`
+          : `<label>Group <select id="fd-group">${groups.map((g) => opt(g.id, g.name, (m.group || '') === g.id)).join('')}</select></label>`) +
         `<section><h4>Ship</h4>${m.sharing.ship ? `<div class="fbars">${shipBars}</div><div class="kv" style="margin-top:6px">${shipKv}</div>` : `<p class="note">${esc(m.handle)} does not share ship status.</p>`}</section>` +
         `<section><h4>Character</h4>${m.sharing.character ? `<div class="fbars">${charBars}</div><div class="kv" style="margin-top:6px">${charKv}</div>` : `<p class="note">${esc(m.handle)} does not share character status.</p>`}</section>` +
         `<section><h4>Shield faces, power, flight</h4>${detail}</section>`;
@@ -2337,7 +4174,7 @@
     });
 
     function openFleetFields() {
-      closeFleetDetail();
+      closeFleetOverlays('fleet-fields');
       const el = $('fleet-fields');
       const on = new Set(fleet.view.fields);
       const box = (consent) => fleet.fields.filter((f) => f.consent === consent)
@@ -2353,7 +4190,7 @@
       send({ type: 'fleet.fields', fields });
     });
     $('fleet-fields').addEventListener('click', (e) => { if (e.target.closest('[data-ff-do="close"]')) $('fleet-fields').hidden = true; });
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeFleetDetail(); $('fleet-fields').hidden = true; if (dashPanel && !$('dlg').open) closeDashPanel(); } });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('dlg').open) { closeFleetOverlays(); if (dashPanel) closeDashPanel(); } });
 
     // ------------------------------------------------------------ kiosk
 
@@ -2404,7 +4241,7 @@
     function openKioskMenu() {
       const m = $('kiosk-menu');
       const t = serverTab(currentId);
-      m.innerHTML = `<h3>Kiosk menu</h3><p class="note">${esc(t ? t.name : ONLY)}. Hold Escape or the top left corner for 2 s to come back here.</p><div class="row">` +
+      m.innerHTML = `<h3>Kiosk menu</h3><p class="note">${esc(t ? t.name : onFleetTab() ? FLEET_TAB_DEF.name : ONLY)}. Hold Escape or the top left corner for 2 s to come back here.</p><div class="row">` +
         '<button class="btn primary" data-k="back" type="button">Back to the tab</button>' +
         `<button class="btn" data-k="map" type="button" ${t ? '' : 'disabled'}>Map bezel buttons</button>` +
         `<button class="btn" data-k="full" type="button">${document.fullscreenElement ? 'Leave full screen' : 'Full screen'}</button>` +

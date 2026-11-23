@@ -131,7 +131,17 @@ fn a_ship_dashboard_copies_tab_names_with_ids_of_its_own_and_the_makers_theme() 
     assert!(made.problems.is_empty());
     let info = made.dashboard.unwrap();
     assert_eq!(info.id, "drak_corsair");
-    assert_eq!(info.name, "Drake Interplanetary Corsair");
+    assert_eq!(info.name, "Drake Corsair");
+    assert_eq!(info.ship_name.as_deref(), Some("Drake Corsair"));
+    assert_eq!(
+        ship("Drake Interplanetary", "Cutlass Black", None).derived_name(),
+        "Drake Cutlass Black"
+    );
+    assert_eq!(ship("", "Mystery", None).derived_name(), "Mystery");
+    assert_eq!(
+        ship("Nobody Inc", "X1", None).derived_name(),
+        "Nobody Inc X1"
+    );
     assert_eq!(info.theme.as_deref(), Some("drake"));
     assert_eq!(store.list().active, info.id, "shown at once");
     assert!(store.list().pinned);
@@ -232,7 +242,7 @@ fn duplicate_rename_and_remove() {
         .dashboard
         .unwrap();
     let copy = store.duplicate(&c.id, None).unwrap().dashboard.unwrap();
-    assert_eq!(copy.name, "Drake Interplanetary Corsair copy");
+    assert_eq!(copy.name, "Drake Corsair copy");
     assert_eq!(copy.id, "drak_corsair-copy");
     assert_eq!(copy.ship, c.ship, "for the same ship");
     let order: Vec<String> = store.list().dashboards.into_iter().map(|b| b.id).collect();
@@ -355,5 +365,94 @@ fn ids_and_slugs() {
             .unwrap()
             .manufacturer,
         ""
+    );
+}
+
+#[test]
+fn a_tab_is_deleted_but_never_a_dashboards_last_one_or_the_fleet_tab() {
+    let store = DashboardStore::new(None);
+    let extra = store.add_tab(None).unwrap().tab.unwrap();
+    let ship = store
+        .create_for_ship(corsair(), None, None, &Known::default())
+        .unwrap()
+        .dashboard
+        .unwrap();
+    let ship_tabs: Vec<String> = store.get().tabs.iter().map(|t| t.id.clone()).collect();
+    assert_eq!(ship_tabs.len(), 2, "copied from the generic dashboard");
+    assert!(store.remove_tab(&ship_tabs[0]).unwrap().problems.is_empty());
+    assert_eq!(
+        store.remove_tab(&ship_tabs[1]).unwrap().problems,
+        ["The last tab cannot be removed"],
+        "{}'s last tab, while the generic one has two",
+        ship.name
+    );
+    assert_eq!(
+        store.remove_tab("@fleet").unwrap().problems,
+        ["No tab \"@fleet\""]
+    );
+    // The generic dashboard's own tabs are its own to delete.
+    assert!(store.remove_tab(&extra.id).unwrap().problems.is_empty());
+    assert_eq!(
+        store.remove_tab("main").unwrap().problems,
+        ["The last tab cannot be removed"]
+    );
+    assert_eq!(store.generic().tabs.len(), 1);
+}
+
+#[test]
+fn the_cell_size_is_per_dashboard_and_kept_in_the_file_copies_and_exports() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("dashboards.json");
+    let store = DashboardStore::new(Some(file.clone()));
+    assert_eq!(
+        store.get().cell,
+        None,
+        "an existing dashboard loads at the default"
+    );
+    assert!(
+        !crate::json::to_text(&store.get()).contains("cell"),
+        "nothing written for it"
+    );
+    for bad in [json!(70), json!("80"), Value::Null, json!(80.5)] {
+        assert_eq!(
+            store.set_cell(Some(&bad)).unwrap().problems,
+            ["the cell size is 48, 64, 72, 80 or 96 px"],
+            "{bad}"
+        );
+    }
+    assert!(
+        store
+            .set_cell(Some(&json!(96)))
+            .unwrap()
+            .problems
+            .is_empty()
+    );
+    assert_eq!(store.get().cell, Some(96));
+    assert_eq!(read(&file)["dashboards"][0]["cell"], 96);
+    // A ship's dashboard starts as a copy, then has its own size.
+    store
+        .create_for_ship(corsair(), None, None, &Known::default())
+        .unwrap();
+    assert_eq!(store.get().cell, Some(96));
+    assert!(
+        store
+            .set_cell(Some(&json!(48)))
+            .unwrap()
+            .problems
+            .is_empty()
+    );
+    assert_eq!(store.generic().cell, Some(96));
+    assert_eq!(DashboardStore::new(Some(file)).get().cell, Some(48));
+    // The export carries it, and an import takes it or leaves a bad one out.
+    let mut export = crate::json::to_js_value(&store.get());
+    assert_eq!(export["cell"], 48);
+    let (dash, _) = read_dashboard(Some(&export), &Known::default());
+    assert_eq!(dash.unwrap().cell, Some(48));
+    export["cell"] = json!(50);
+    let (dash, summary) = read_dashboard(Some(&export), &Known::default());
+    assert_eq!(dash.unwrap().cell, None);
+    assert_eq!(
+        summary.skipped,
+        ["Cell size left out, the cell size is 48, 64, 72, 80 or 96 px"]
     );
 }

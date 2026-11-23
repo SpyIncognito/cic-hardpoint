@@ -1,5 +1,5 @@
 //! A member's status as the viewer sees it (the card's state, or OFFLINE once the card is stale),
-//! the order members are listed in, and a group's roll-up such as "4/6 up, 1 downed, 1 dead".
+//! the order members are listed in, and a unit's roll-up such as "4/6 up, 1 downed, 1 dead".
 
 use serde::{Deserialize, Serialize};
 
@@ -64,6 +64,12 @@ pub struct Rollup {
 }
 
 pub fn rollup(statuses: impl IntoIterator<Item = Status>) -> Rollup {
+    rollup_as("", statuses)
+}
+
+/// A roll-up whose text names what it counts, such as "3/4 Pilots up, 1 downed" with the
+/// unit kind's [`crate::structure::UnitKind::rollup_label`].
+pub fn rollup_as(label: &str, statuses: impl IntoIterator<Item = Status>) -> Rollup {
     let mut r = Rollup::default();
     for s in statuses {
         r.total += 1;
@@ -78,7 +84,12 @@ pub fn rollup(statuses: impl IntoIterator<Item = Status>) -> Rollup {
     r.text = if r.total == 0 {
         "empty".to_owned()
     } else {
-        let mut parts = vec![format!("{}/{} up", r.up, r.total)];
+        let counted = if label.is_empty() {
+            String::new()
+        } else {
+            format!(" {label}")
+        };
+        let mut parts = vec![format!("{}/{}{counted} up", r.up, r.total)];
         for (n, what) in [
             (r.downed, "downed"),
             (r.dead, "dead"),
@@ -109,6 +120,11 @@ mod tests {
             "1/3 up, 1 offline, 1 no status"
         );
         assert_eq!(rollup([]).text, "empty");
+        assert_eq!(
+            rollup_as("Pilots", [Up, Up, Up, Downed]).text,
+            "3/4 Pilots up, 1 downed"
+        );
+        assert_eq!(rollup_as("Crew", [Up; 6]).text, "6/6 Crew up");
 
         assert_eq!(Status::of(Some(Life::Downed), true), Offline);
         assert_eq!(Status::of(None, false), Unknown);

@@ -391,6 +391,29 @@ fn the_ship_key_is_manufacturer_and_model() {
 }
 
 #[test]
+fn the_shown_name_is_derived_or_the_users_and_the_key_stays() {
+    let (mut s, _) = clocked();
+    s.ingest(&json!({ "vehicle": { "state": {
+        "name": "DRAK_Corsair_877723283935", "class_name": "DRAK_Corsair" } } }));
+    let ship = ship_of(&s).unwrap();
+    assert_eq!(
+        (ship.name.as_str(), ship.derived_name.as_str()),
+        ("Drake Corsair", "Drake Corsair")
+    );
+    s.set_ship_names(std::collections::HashMap::from([(
+        "DRAK_Corsair".to_owned(),
+        "Old Betsy".to_owned(),
+    )]));
+    let ship = ship_of(&s).unwrap();
+    assert_eq!(
+        (ship.name.as_str(), ship.derived_name.as_str()),
+        ("Old Betsy", "Drake Corsair")
+    );
+    assert_eq!(ship.key, "Drake Interplanetary / Corsair");
+    assert_eq!(ship.ship_ref().class_name.as_deref(), Some("DRAK_Corsair"));
+}
+
+#[test]
 fn switches_only_on_a_stable_new_ship_and_never_mid_sequence() {
     let mut sw = Switcher::default();
     let (ka, kb) = ("Drake Interplanetary / Corsair", "Anvil Aerospace / Arrow");

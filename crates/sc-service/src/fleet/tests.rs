@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,11 +10,11 @@ use super::card::{
     Consent, EVENT_DEAD, EVENT_DOWNED, EVENT_RESPAWN, EVENT_SPAWN, FIELDS, Life, LifeTracker,
     RESPAWNED_MS, SendConsent, Sender, Sharing, build_card, card_fields, detail_fields,
 };
-use super::demo::{Demo, Script, read_recording};
-use super::hub::{FleetHub, STALE_AFTER};
+use super::hub::{FleetHub, Layout, STALE_AFTER};
 use super::view::{FleetViewStore, MAX_GROUP_MEMBERS, MAX_GROUPS, read_view};
 use crate::json::to_text;
 use crate::portal::status::Tone;
+use fleet_proto::Role;
 use fleet_proto::rollup::Status;
 
 fn frame() -> Value {
@@ -105,6 +104,28 @@ fn builds_a_card_from_the_game_state() {
     assert_eq!(ids, FIELDS.iter().map(|f| f.id).collect::<Vec<_>>());
     let text = to_text(&card);
     assert!(!text.contains("123456") && !text.contains("uec"), "{text}");
+}
+
+#[test]
+fn the_card_names_the_ship_as_the_dashboard_does() {
+    let mut state = state_of(&json!({ "vehicle": { "state": {
+        "name": "DRAK_Corsair_877723283935", "class_name": "DRAK_Corsair" } } }));
+    let name = |state: &StateModel| {
+        let card = build_card(
+            state,
+            &LifeTracker::default(),
+            0,
+            &sender(Sharing::ALL),
+            &all_fields(),
+        );
+        card.fields.get("ship.name").unwrap().text.clone()
+    };
+    assert_eq!(name(&state), "Drake Corsair");
+    state.set_ship_names(std::collections::HashMap::from([(
+        "DRAK_Corsair".to_owned(),
+        "Old Betsy".to_owned(),
+    )]));
+    assert_eq!(name(&state), "Old Betsy");
 }
 
 #[test]
@@ -470,7 +491,7 @@ fn card(member: &str, life: Option<Life>) -> super::card::Card {
 #[tokio::test(start_paused = true)]
 async fn the_hub_groups_members_rolls_them_up_and_marks_stale_cards_offline() {
     let view = Arc::new(FleetViewStore::new(None));
-    let hub = FleetHub::new(Arc::clone(&view), true);
+    let hub = FleetHub::new(Arc::clone(&view), key(0));
     let wing = view.add_group(Some(&json!("Wing"))).unwrap().group.unwrap();
     for m in ["a", "b", "c"] {
         view.assign(m, Some(&wing.id), None).unwrap();
@@ -486,7 +507,8 @@ async fn the_hub_groups_members_rolls_them_up_and_marks_stale_cards_offline() {
     assert!(!hub.receive(card("bad id", None)));
 
     let m = hub.model();
-    assert!(m.demo);
+    assert_eq!(m.layout, Layout::Personal);
+    assert!(m.admiral_allowed);
     assert_eq!(m.groups.len(), 2);
     assert_eq!(
         m.groups[0].members,
@@ -497,7 +519,9 @@ async fn the_hub_groups_members_rolls_them_up_and_marks_stale_cards_offline() {
     assert_eq!(m.groups[1].id, None);
     assert_eq!(m.groups[1].name, "Ungrouped");
     assert_eq!(m.groups[1].members, ["d"]);
-    assert_eq!(m.admiral, ["c", "b", "a", "d"]);
+    assert_eq!(m.wings.len(), 1);
+    assert_eq!(m.wings[0].id, None);
+    assert_eq!(m.wings[0].rollup.total, 4);
     assert_eq!(m.rollup.total, 4);
 
     // A card not updated within the stale window is OFFLINE; a fresh one is not.
@@ -522,7 +546,7 @@ async fn the_hub_groups_members_rolls_them_up_and_marks_stale_cards_offline() {
 #[test]
 fn the_hub_asks_for_detail_fields_only_while_a_detail_view_is_open() {
     let view = Arc::new(FleetViewStore::new(None));
-    let hub = FleetHub::new(Arc::clone(&view), false);
+    let hub = FleetHub::new(Arc::clone(&view), key(0));
     view.set_fields(Some(&json!(["ship.hull"]))).unwrap();
     assert_eq!(hub.wanted("a"), HashSet::from(["ship.hull"]));
     let page = hub.viewer();
@@ -542,117 +566,693 @@ fn the_hub_asks_for_detail_fields_only_while_a_detail_view_is_open() {
     );
 }
 
-fn recording_text() -> String {
-    // 20 s at 10 frames a second, in a ship, with one real event.
-    (0..200)
-        .map(|i| {
-            let mut f = frame();
-            if i == 57 {
-                f["events"] = json!({ "events": [{ "type": "GAME_EVENT_TYPE_ACTOR_LEAVE_SEAT" }] });
-            }
-            json!({ "t": 1000 + i * 100, "frame": f }).to_string()
+fn key(n: u8) -> fleet_proto::PublicKey {
+    fleet_proto::Identity::from_seed([n; 32]).public()
+}
+
+#[test]
+fn the_fleet_key_is_made_once_user_only_and_a_damaged_one_is_refused() {
+    use super::identity::{KEY_FILE, load_or_create};
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings").join(KEY_FILE);
+    let made = load_or_create(Some(&file)).unwrap();
+    let again = load_or_create(Some(&file)).unwrap();
+    assert_eq!(made.public(), again.public());
+    assert!(
+        !std::fs::read_to_string(&file)
+            .unwrap()
+            .contains(&made.public().to_string())
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |f: &std::path::Path| std::fs::metadata(f).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&file), 0o600);
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        load_or_create(Some(&file)).unwrap();
+        assert_eq!(mode(&file), 0o600, "put back to user-only");
+    }
+    assert_ne!(load_or_create(None).unwrap().public(), made.public());
+    std::fs::write(&file, "not a key\n").unwrap();
+    assert!(load_or_create(Some(&file)).is_err());
+}
+
+#[test]
+fn the_fleets_file_keeps_what_checks_out_and_never_a_code() {
+    use super::store::{FleetsStore, JoinedFleet, read_fleets};
+    let good = key(1).to_string();
+    let raw = json!({
+        "schemaVersion": 1,
+        "active": good,
+        "fleets": [
+            { "host": "relay.example.org", "port": 7443, "key": good, "handle": "Vega", "code": "secret" },
+            { "host": "bad host", "port": 1, "key": key(2).to_string(), "handle": "V" },
+            { "host": "h", "port": 1, "key": "short", "handle": "V" },
+            { "host": "h", "port": 0, "key": key(3).to_string(), "handle": "V" },
+            { "host": "h", "port": 1, "key": key(4).to_string(), "handle": "<b>" },
+            { "host": "other.example.org", "port": 1, "key": good, "handle": "Again" },
+            { "host": "h", "port": 1, "key": key(9).to_string(), "handle": "V", "hosted": true, "portal": "http://cic.example.org" },
+        ],
+    });
+    let (fleets, skipped) = read_fleets(&raw);
+    assert_eq!(fleets.fleets.len(), 1, "{skipped:?}");
+    assert_eq!(skipped.len(), 6, "{skipped:?}");
+    assert!(skipped[5].contains("bad portal address"), "{skipped:?}");
+    assert_eq!(
+        fleets.active_fleet().map(|f| f.handle.as_str()),
+        Some("Vega")
+    );
+    assert!(
+        read_fleets(&json!({ "schemaVersion": 2, "fleets": [] }))
+            .1
+            .len()
+            == 1
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("fleets.json");
+    let store = FleetsStore::new(Some(file.clone()));
+    store
+        .joined(JoinedFleet {
+            host: "::1".to_owned(),
+            port: 9,
+            key: key(5),
+            handle: "Vega".to_owned(),
+            event: Some("Op One".to_owned()),
+            hosted: true,
+            event_id: Some("op-1".to_owned()),
+            portal: Some("https://cic.example.org".to_owned()),
         })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-#[test]
-fn a_recording_is_thinned_to_two_frames_a_second_keeping_events() {
-    let rec = read_recording("test", Cursor::new(recording_text())).unwrap();
-    assert_eq!(rec.frames[0].t, 0.0);
-    assert_eq!(rec.frames.len(), 41, "40 kept plus the event frame");
-    assert!(rec.frames.iter().any(|f| f.frame.get("events").is_some()));
-    assert!(rec.duration_ms > 19_000.0);
-    assert!(
-        rec.frames[0].frame["vehicle"]["state"]["flight"]
-            .get("settings")
-            .is_none()
-    );
-    assert!(read_recording("bad", Cursor::new("{\"t\": 1}")).is_err());
-    assert!(read_recording("empty", Cursor::new("\n")).is_err());
-}
-
-#[test]
-fn scripted_events_fire_once_per_loop() {
-    let s = Script::downed_dead_respawn();
-    assert!(s.beats.iter().all(|b| b.at_ms < s.period_ms));
-    let one = s.events_between(0, s.period_ms);
-    assert_eq!(one, [EVENT_DOWNED, EVENT_DEAD, EVENT_RESPAWN]);
-    let two = s.events_between(-1, 2 * s.period_ms);
-    assert_eq!(two.len(), 6);
-    assert!(s.events_between(26_000, 27_000).is_empty());
-}
-
-#[test]
-fn the_demo_peers_send_cards_through_the_hub() {
-    let rec = read_recording("test", Cursor::new(recording_text())).unwrap();
-    let view = Arc::new(FleetViewStore::new(None));
-    let hub = FleetHub::new(view, true);
-    let mut demo = Demo::new(vec![rec.clone(), rec], 5);
-    let handles: Vec<&str> = demo
-        .peers()
-        .iter()
-        .map(|p| p.sender.handle.as_str())
-        .collect();
-    assert_eq!(
-        handles,
-        [
-            "Demo Vega",
-            "Demo Rook",
-            "Demo Kestrel",
-            "Demo Wren",
-            "Demo Ash"
-        ]
-    );
-    assert_eq!(demo.peers()[0].offset_ms, 0.0);
-    assert_eq!(demo.peers()[1].offset_ms, 0.0);
-    assert!(
-        demo.peers()[2].offset_ms > 0.0,
-        "derived peers start elsewhere"
-    );
-
-    let status = |hub: &FleetHub, id: &str| {
-        hub.model()
-            .members
-            .iter()
-            .find(|m| m.card.member == id)
-            .map(|m| m.status)
-    };
-    demo.step(0, &hub);
-    assert_eq!(hub.model().members.len(), 5);
-    assert_eq!(status(&hub, "demo-rook"), Some(Status::Up));
-    assert_eq!(
-        status(&hub, "demo-wren"),
-        Some(Status::Unknown),
-        "ship status only"
-    );
-    let vega = hub.model().members[0].card.clone();
-    assert_eq!(vega.handle, "Demo Vega");
-    assert_eq!(vega.fields.get("ship.name").unwrap().text, "Demo Lancer");
-    assert!(
-        vega.fields.get("detail.power").is_none(),
-        "no detail view open"
-    );
-
-    // SCRIPTED: Rook goes down at 25 s, dies at 70 s, respawns at 90 s; Kestrel is downed at 40 s.
-    for t in (500..=26_000).step_by(500) {
-        demo.step(t, &hub);
-    }
-    assert_eq!(status(&hub, "demo-rook"), Some(Status::Downed));
-    let rook = hub
-        .model()
-        .members
-        .into_iter()
-        .find(|m| m.card.member == "demo-rook")
         .unwrap();
-    assert_eq!(rook.card.fields.get("char.health").unwrap().text, "8%");
-    for t in (26_500..=71_000).step_by(500) {
-        demo.step(t, &hub);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("code"), "{text}");
+    assert!(
+        text.contains(r#""portal": "https://cic.example.org""#),
+        "{text}"
+    );
+    let again = FleetsStore::new(Some(file));
+    assert_eq!(again.get().fleets[0].address(), "[::1]:9");
+    assert!(again.get().fleets[0].hosted);
+    assert_eq!(again.get().fleets[0].event_id.as_deref(), Some("op-1"));
+    assert_eq!(
+        again.get().fleets[0].portal.as_deref(),
+        Some("https://cic.example.org")
+    );
+    assert_eq!(again.get().active, Some(key(5)));
+    again.remove(&key(5)).unwrap();
+    assert!(again.get().fleets.is_empty() && again.get().active.is_none());
+}
+
+fn client_with(frame: &Value) -> Arc<super::client::FleetClient> {
+    use super::client::{FleetClient, TlsConnector};
+    use super::store::{ConsentStore, FleetsStore};
+    let core = Arc::new(sc_core::ControlCore::new(
+        sc_core::ControlCoreOptions::default(),
+    ));
+    core.ingest(frame);
+    let identity = fleet_proto::Identity::from_seed([7; 32]);
+    let hub = Arc::new(FleetHub::new(
+        Arc::new(FleetViewStore::new(None)),
+        identity.public(),
+    ));
+    FleetClient::new(
+        hub,
+        core,
+        identity,
+        FleetsStore::new(None),
+        ConsentStore::new(None),
+        Arc::new(TlsConnector::new().unwrap()),
+    )
+}
+
+#[tokio::test]
+async fn consent_filters_the_card_before_it_is_sent_and_starts_off() {
+    let client = client_with(&frame());
+    assert_eq!(
+        client.consent(),
+        SendConsent::none(),
+        "nothing until opted in"
+    );
+    let card = client.preview();
+    assert!(card.fields.0.is_empty());
+    assert_eq!(card.state, None);
+    assert_eq!(card.sharing, Sharing::default());
+
+    client
+        .set_consent(Some(&json!(["ship.hull", "char.health", "detail.speed"])))
+        .unwrap();
+    let card = client.preview();
+    assert_eq!(
+        card.fields.ids().collect::<Vec<_>>(),
+        ["ship.hull", "char.health", "detail.speed"]
+    );
+    assert_eq!(card.state, Some(Life::Up));
+    assert!(card.check().is_ok());
+    let text = serde_json::to_string(&card).unwrap();
+    assert!(!text.contains("123456"), "never the balance: {text}");
+
+    assert!(
+        client
+            .set_consent(Some(&json!(["ship.hull", "nope"])))
+            .is_err()
+    );
+    assert!(
+        client.consent().allows("ship.hull"),
+        "a refused change keeps the old one"
+    );
+    client.set_consent(Some(&json!([]))).unwrap();
+    assert!(client.preview().fields.0.is_empty());
+}
+
+/// Admiral 1. Wing "air" (commander 2) with squadrons f2 (commander 4; pilots 4 and 5) and f1
+/// (commander 2; pilots 2 and 3). Ground "army" (commander 6) with squad "ground" (soldier 6).
+fn structured_event() -> fleet_proto::EventStructure {
+    use fleet_proto::structure::{EventInfo, EventState, Seat, Unit, UnitKind};
+    let unit = |id: &str, kind, parent: Option<&str>, lead: &[u8], seats: &[(u8, Role)]| Unit {
+        id: id.to_owned(),
+        kind,
+        name: id.to_uppercase(),
+        parent: parent.map(str::to_owned),
+        lead: lead.iter().map(|n| key(*n).to_string()).collect(),
+        seats: seats
+            .iter()
+            .map(|(n, role)| Seat {
+                member: key(*n).to_string(),
+                role: *role,
+            })
+            .collect(),
+    };
+    let ship = |id: &str, parent: &str, pilot: u8| {
+        unit(
+            id,
+            UnitKind::Ship,
+            Some(parent),
+            &[],
+            &[(pilot, Role::Pilot)],
+        )
+    };
+    let mut air = unit("air", UnitKind::Wing, None, &[2], &[]);
+    air.name = "Air wing".to_owned();
+    let mut army = unit("army", UnitKind::Ground, None, &[6], &[]);
+    army.name = "Army".to_owned();
+    fleet_proto::EventStructure {
+        event: EventInfo {
+            id: "op".to_owned(),
+            name: "Op".to_owned(),
+            state: EventState::Open,
+        },
+        admiral: Some(key(1).to_string()),
+        units: vec![
+            air,
+            unit("f2", UnitKind::Squadron, Some("air"), &[4], &[]),
+            ship("f2-4", "f2", 4),
+            ship("f2-5", "f2", 5),
+            unit("f1", UnitKind::Squadron, Some("air"), &[2], &[]),
+            ship("f1-2", "f1", 2),
+            ship("f1-3", "f1", 3),
+            army,
+            unit(
+                "ground",
+                UnitKind::Squad,
+                Some("army"),
+                &[],
+                &[(6, Role::Soldier)],
+            ),
+        ],
+        unassigned: vec![],
     }
-    assert_eq!(status(&hub, "demo-rook"), Some(Status::Dead));
-    assert_eq!(status(&hub, "demo-kestrel"), Some(Status::Downed));
-    for t in (71_500..=91_000).step_by(500) {
-        demo.step(t, &hub);
+}
+
+#[test]
+fn the_panel_draws_the_unit_tree_with_labelled_roll_ups_and_role_icons() {
+    use super::hub::LinkInfo;
+    use fleet_proto::Grant;
+    let view = Arc::new(FleetViewStore::new(None));
+    let hub = FleetHub::new(view, key(3));
+    hub.set_structure(Some(structured_event().view_for(&key(3).to_string())));
+    let life = [
+        (1, Life::Up),
+        (2, Life::Up),
+        (3, Life::Downed),
+        (4, Life::Dead),
+        (6, Life::Up),
+        (9, Life::Up),
+    ];
+    for (n, l) in life {
+        assert!(hub.receive(card(&key(n).to_string(), Some(l))));
     }
-    assert_eq!(status(&hub, "demo-rook"), Some(Status::Respawned));
+    let m = hub.model();
+    assert_eq!(m.layout, Layout::Event);
+    assert!(m.placed && !m.commander);
+    assert!(!m.admiral_allowed, "a plain member has no admiral view");
+    let tree = m.tree.as_ref().unwrap();
+    assert_eq!(tree.name, "Op");
+    assert_eq!(tree.admiral.as_ref().unwrap().member, key(1).to_string());
+    assert_eq!(tree.admiral_role.label, "Admiral");
+    let tops: Vec<_> = tree.units.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(tops, ["Air wing"]);
+    let air = &tree.units[0];
+    assert_eq!(air.lead_role.label, "Wing Commander");
+    assert_eq!(air.lead_role.icon, "wing-commander");
+    assert_eq!(air.leads[0].member, key(2).to_string());
+    let squadrons: Vec<_> = air.units.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(squadrons, ["F1"], "not the wing's other squadron");
+    let f1 = &air.units[0];
+    assert!(f1.open, "a pilot sees their whole squadron");
+    assert_eq!(f1.rollup.text, "1/2 Pilots up, 1 downed");
+    assert_eq!(f1.lead_role.label, "Squadron Commander");
+    let ships: Vec<_> = f1.units.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(ships, ["F1-2", "F1-3"]);
+    let seat = &f1.units[1].seats[0];
+    assert_eq!(seat.person.member, key(3).to_string());
+    assert_eq!(seat.role.label, "Pilot");
+    assert_eq!(f1.units[1].rollup.text, "0/1 Pilots up, 1 downed");
+    assert!(f1.units[1].fighter);
+
+    // A fighter's ship card is not drawn: the Pilot's own card stands for the ship.
+    let mut relayed = fleet_proto::ShipSource::offline();
+    relayed.kind = fleet_proto::SourceKind::Pilot;
+    assert!(hub.receive(ship_card("f1-3", relayed, "ANVL_Arrow")));
+    let m = hub.model();
+    let f1_3 = &m.tree.as_ref().unwrap().units[0].units[0].units[1];
+    assert!(f1_3.fighter && f1_3.ship_card.is_none());
+    assert!(!air.open, "the wing above shows its name and lead only");
+    assert_eq!(tree.units.len(), 1, "nothing of the ground force");
+    assert!(m.unassigned.is_empty(), "a pilot does not see the bucket");
+
+    let roles = |n: u8| {
+        m.members
+            .iter()
+            .find(|x| x.card.member == key(n).to_string())
+            .unwrap()
+            .roles
+            .clone()
+    };
+    assert_eq!(roles(1), [Role::Admiral]);
+    assert_eq!(roles(2), [Role::WingCommander, Role::SquadronCommander]);
+    assert!(roles(3).is_empty());
+    assert!(
+        m.members
+            .iter()
+            .any(|x| x.me && x.card.member == key(3).to_string())
+    );
+
+    // The admiral sees every unit; members not connected count as offline in the roll-ups.
+    hub.set_member(Some(key(1).to_string()));
+    hub.set_structure(Some(structured_event()));
+    let m = hub.model();
+    assert!(m.commander);
+    let tree = m.tree.unwrap();
+    assert_eq!(
+        tree.units[0].rollup.text,
+        "1/4 Pilots up, 1 downed, 1 dead, 1 offline"
+    );
+    assert_eq!(tree.units[1].rollup.text, "1/1 Soldiers up");
+    assert_eq!(tree.units[1].units[0].rollup.text, "1/1 Soldiers up");
+    let f2_5 = &tree.units[0].units[0].units[1].seats[0].person;
+    assert!(!f2_5.connected && !f2_5.card, "key 5 has not connected yet");
+
+    hub.set_link(LinkInfo {
+        grants: structured_event()
+            .grants_of(&key(2).to_string())
+            .into_iter()
+            .collect::<Vec<Grant>>(),
+        ..LinkInfo::default()
+    });
+    assert!(hub.model().admiral_allowed, "a commander has it");
+    hub.set_structure(None);
+    assert_eq!(hub.model().layout, Layout::Personal);
+}
+
+#[test]
+fn a_fighter_is_its_pilots_card_with_the_copilot_under_it() {
+    use fleet_proto::card::{FieldValue, Tone};
+    use fleet_proto::structure::Seat;
+    let mut event = structured_event();
+    let f1_3 = event.units.iter_mut().find(|u| u.id == "f1-3").unwrap();
+    f1_3.seats.insert(
+        0,
+        Seat {
+            member: key(9).to_string(),
+            role: Role::Copilot,
+        },
+    );
+    let hub = FleetHub::new(Arc::new(FleetViewStore::new(None)), key(1));
+    hub.set_member(Some(key(1).to_string()));
+    hub.set_structure(Some(event));
+    let named = |n: u8, ship: &str| {
+        let mut c = card(&key(n).to_string(), Some(Life::Up));
+        c.fields
+            .0
+            .push(("ship.name", FieldValue::text(ship, Tone::Info)));
+        c
+    };
+    hub.receive(named(3, "Arrow"));
+    hub.receive(named(9, "Gladius"));
+    let m = hub.model();
+    let f1_3 = &m.tree.as_ref().unwrap().units[0].units[1].units[1];
+    assert_eq!(f1_3.id, "f1-3");
+    let rows: Vec<_> = f1_3
+        .seats
+        .iter()
+        .map(|s| (s.role.label, s.not_aboard))
+        .collect();
+    assert_eq!(rows, [("Pilot", false), ("Copilot", true)]);
+    assert_eq!(f1_3.rollup.text, "2/2 Pilots up");
+}
+
+/// The event from [`structured_event`], with keys 7 and 8 Unassigned and a fleet "navy"
+/// (commander 6, who also soldiers) holding the ship "bounty" (captain 10; pilot 10, crew 11).
+fn event_with_unassigned() -> fleet_proto::EventStructure {
+    use fleet_proto::structure::{Seat, Unit, UnitKind};
+    let mut s = structured_event();
+    s.unassigned = vec![key(7).to_string(), key(8).to_string()];
+    s.units.push(Unit {
+        id: "navy".to_owned(),
+        kind: UnitKind::Fleet,
+        name: "Navy".to_owned(),
+        parent: None,
+        lead: vec![key(6).to_string()],
+        seats: vec![],
+    });
+    s.units.push(Unit {
+        id: "bounty".to_owned(),
+        kind: UnitKind::Ship,
+        name: "Bounty".to_owned(),
+        parent: Some("navy".to_owned()),
+        lead: vec![key(10).to_string()],
+        seats: vec![
+            Seat {
+                member: key(10).to_string(),
+                role: Role::Pilot,
+            },
+            Seat {
+                member: key(11).to_string(),
+                role: Role::Crew,
+            },
+        ],
+    });
+    assert!(s.problems().is_empty(), "{:?}", s.problems());
+    s
+}
+
+#[test]
+fn commanders_see_the_unassigned_by_name_and_an_unassigned_member_only_their_own_card() {
+    use fleet_proto::RosterEntry;
+    let full = event_with_unassigned();
+    let view = Arc::new(FleetViewStore::new(None));
+    let hub = FleetHub::new(view, key(20));
+    // The relay sends each member their own view.
+    hub.set_member(Some(key(6).to_string()));
+    hub.set_structure(Some(full.view_for(&key(6).to_string())));
+    hub.set_roster(vec![
+        RosterEntry {
+            member: key(7).to_string(),
+            handle: Some("Wren".to_owned()),
+            role: None,
+            unit: None,
+            key: Some(key(7)),
+        },
+        RosterEntry {
+            member: key(8).to_string(),
+            handle: Some("Ash".to_owned()),
+            role: None,
+            unit: None,
+            key: None,
+        },
+    ]);
+    let m = hub.model();
+    assert!(m.commander, "a ground and fleet commander");
+    let names: Vec<_> = m
+        .unassigned
+        .iter()
+        .map(|p| (p.handle.as_str(), p.connected, p.card))
+        .collect();
+    assert_eq!(names, [("Wren", true, false), ("Ash", false, false)]);
+    let text = to_text(&m.unassigned);
+    assert!(
+        !text.contains("fields") && !text.contains("state"),
+        "{text}"
+    );
+
+    // Wren, connected while Unassigned, gets a view with no units and their own card only.
+    let wren = FleetHub::new(Arc::new(FleetViewStore::new(None)), key(7));
+    wren.set_member(Some(key(7).to_string()));
+    wren.set_structure(Some(full.view_for(&key(7).to_string())));
+    wren.receive(card(&key(7).to_string(), Some(Life::Up)));
+    let m = wren.model();
+    assert_eq!(m.layout, Layout::Event);
+    assert!(!m.placed && !m.commander);
+    assert!(m.tree.unwrap().units.is_empty());
+    assert!(m.unassigned.is_empty());
+    assert!(m.members[0].me);
+}
+
+fn ship_card(unit: &str, source: fleet_proto::ShipSource, class: &str) -> super::card::Card {
+    use fleet_proto::card::{FieldValue, Fields, Tone};
+    super::card::Card {
+        schema: super::card::CARD_SCHEMA,
+        member: fleet_proto::card::ship_card_id(unit),
+        handle: "Bounty".to_owned(),
+        sharing: Sharing {
+            ship: true,
+            ..Sharing::default()
+        },
+        state: None,
+        fields: Fields(vec![
+            ("ship.class", FieldValue::text(class, Tone::Info)),
+            ("ship.hull", FieldValue::text("80%", Tone::Ok)),
+        ]),
+        source: Some(source),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn ship_cards_show_their_source_grey_out_when_stale_and_flag_crew_not_aboard() {
+    use fleet_proto::card::{FieldValue, Tone};
+    use fleet_proto::{ShipSource, SourceKind};
+    let full = event_with_unassigned();
+    let hub = FleetHub::new(Arc::new(FleetViewStore::new(None)), key(20));
+    hub.set_member(Some(key(10).to_string()));
+    hub.set_structure(Some(full.view_for(&key(10).to_string())));
+    let source = |kind, handle: &str, role, age_ms| ShipSource {
+        kind,
+        member: Some(key(10).to_string()),
+        handle: Some(handle.to_owned()),
+        role,
+        age_ms,
+    };
+    let label = |hub: &FleetHub| {
+        let m = hub.model();
+        let ship = m.members.iter().find(|x| x.ship).unwrap().clone();
+        (ship.source_label.unwrap(), ship.status)
+    };
+    hub.receive(ship_card(
+        "bounty",
+        source(SourceKind::Pilot, "Rook", Some(Role::Pilot), None),
+        "DRAK_Cutlass",
+    ));
+    assert_eq!(label(&hub), ("via Rook (Pilot)".to_owned(), Status::Up));
+    hub.receive(ship_card(
+        "bounty",
+        source(SourceKind::StandingIn, "Kestrel", Some(Role::Crew), None),
+        "DRAK_Cutlass",
+    ));
+    assert_eq!(label(&hub).0, "via Kestrel, standing in");
+    hub.receive(ship_card(
+        "bounty",
+        source(SourceKind::Stale, "Kestrel", Some(Role::Crew), Some(4_000)),
+        "DRAK_Cutlass",
+    ));
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert_eq!(
+        label(&hub),
+        ("no report for 6 s".to_owned(), Status::Offline)
+    );
+    let mut offline = ShipSource::offline();
+    hub.receive(ship_card("bounty", offline.clone(), "DRAK_Cutlass"));
+    assert_eq!(label(&hub), ("OFFLINE".to_owned(), Status::Offline));
+    offline.kind = SourceKind::NotShared;
+    hub.receive(ship_card("bounty", offline, "DRAK_Cutlass"));
+    assert_eq!(
+        label(&hub),
+        ("ship status not shared".to_owned(), Status::Unknown)
+    );
+    tokio::time::advance(STALE_AFTER).await;
+    assert_eq!(
+        label(&hub),
+        ("OFFLINE".to_owned(), Status::Offline),
+        "nothing came"
+    );
+
+    hub.receive(ship_card(
+        "bounty",
+        source(SourceKind::Pilot, "Rook", Some(Role::Pilot), None),
+        "DRAK_Cutlass",
+    ));
+    let mut elsewhere = card(&key(11).to_string(), Some(Life::Up));
+    elsewhere
+        .fields
+        .0
+        .push(("ship.class", FieldValue::text("ANVL_Arrow", Tone::Info)));
+    hub.receive(elsewhere);
+    let m = hub.model();
+    assert_eq!(m.rollup.total, 1, "a ship card is not a member");
+    let bounty = &m.tree.unwrap().units[0].units[0];
+    assert_eq!(bounty.ship_card.as_deref(), Some("ship:bounty"));
+    assert!(!bounty.fighter, "a fleet's ship keeps its ship card");
+    assert_eq!(bounty.rollup.text, "1/2 Crew up, 1 offline");
+    let flags: Vec<_> = bounty
+        .seats
+        .iter()
+        .map(|s| (s.role.label, s.not_aboard))
+        .collect();
+    assert_eq!(flags, [("Pilot", false), ("Crew", true)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_ship_card_shows_its_sources_own_state_when_downed_or_dead() {
+    use fleet_proto::{ShipSource, SourceKind};
+    let full = event_with_unassigned();
+    let hub = FleetHub::new(Arc::new(FleetViewStore::new(None)), key(20));
+    hub.set_member(Some(key(10).to_string()));
+    hub.set_structure(Some(full.view_for(&key(10).to_string())));
+    let pilot = ShipSource {
+        kind: SourceKind::Pilot,
+        member: Some(key(10).to_string()),
+        handle: Some("Rook".to_owned()),
+        role: Some(Role::Pilot),
+        age_ms: None,
+    };
+    let ship = |hub: &FleetHub| {
+        let m = hub.model();
+        let ship = m.members.iter().find(|x| x.ship).unwrap().clone();
+        (ship.source_label.unwrap(), ship.status)
+    };
+    hub.receive(ship_card("bounty", pilot, "DRAK_Cutlass"));
+    hub.receive(card(&key(10).to_string(), Some(Life::Dead)));
+    assert_eq!(ship(&hub), ("via Rook (Pilot)".to_owned(), Status::Dead));
+    hub.receive(card(&key(10).to_string(), Some(Life::Downed)));
+    assert_eq!(ship(&hub).1, Status::Downed);
+    hub.receive(card(&key(10).to_string(), Some(Life::Respawned)));
+    assert_eq!(ship(&hub).1, Status::Up);
+
+    // A stale own card says nothing about the ship now.
+    hub.receive(card(&key(10).to_string(), Some(Life::Dead)));
+    tokio::time::advance(STALE_AFTER).await;
+    hub.receive(ship_card(
+        "bounty",
+        ShipSource {
+            kind: SourceKind::Pilot,
+            member: Some(key(10).to_string()),
+            handle: Some("Rook".to_owned()),
+            role: Some(Role::Pilot),
+            age_ms: None,
+        },
+        "DRAK_Cutlass",
+    ));
+    assert_eq!(ship(&hub).1, Status::Up);
+}
+
+#[test]
+fn consent_saved_before_the_new_ship_fields_leaves_them_off() {
+    use super::store::ConsentStore;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("fleet-consent.json");
+    let old = [
+        "ship.name",
+        "ship.mode",
+        "ship.shields",
+        "ship.hull",
+        "ship.fuel",
+        "ship.quantum",
+        "ship.cautions",
+        "ship.weapons",
+        "ship.aboard",
+    ];
+    std::fs::write(
+        &file,
+        json!({ "schemaVersion": 1, "fields": old }).to_string(),
+    )
+    .unwrap();
+    let consent = ConsentStore::new(Some(file)).get();
+    for id in old {
+        assert!(consent.allows(id), "{id}");
+    }
+    for id in ["ship.class", "ship.crew_role", "ship.seat"] {
+        assert!(!consent.allows(id), "{id} is off until chosen");
+        let def = fleet_proto::card::field_def(id).unwrap();
+        assert_eq!(
+            def.consent,
+            super::card::Consent::Ship,
+            "{id} is in the Ship group"
+        );
+    }
+    let wanted: Vec<_> = super::card::card_fields().map(|f| f.id).collect();
+    for id in ["ship.class", "ship.crew_role", "ship.seat"] {
+        assert!(wanted.contains(&id), "{id} can be picked for the cards");
+    }
+}
+
+#[test]
+fn backoff_doubles_to_a_cap_with_a_little_taken_off() {
+    use super::client::Backoff;
+    let secs: Vec<u64> = (0..8).map(|n| Backoff::base(n).as_secs()).collect();
+    assert_eq!(secs, [1, 2, 4, 8, 16, 30, 30, 30]);
+    let mut b = Backoff::default();
+    for n in 0..10 {
+        let wait = b.next_wait();
+        let base = Backoff::base(n);
+        assert!(
+            wait <= base && wait >= base * 4 / 5,
+            "{wait:?} for {base:?}"
+        );
+    }
+    b.reset();
+    assert_eq!(b.attempt(), 0);
+}
+
+#[test]
+fn the_model_links_to_the_event_page_only_for_a_hosted_fleet_with_a_portal() {
+    use super::hub::{EventRef, FleetRef, LinkInfo, LinkState};
+    let hub = FleetHub::new(Arc::new(FleetViewStore::new(None)), key(3));
+    let link = |hosted: bool, portal: Option<&str>, event: &str| LinkInfo {
+        state: LinkState::Online,
+        fleet: Some(FleetRef {
+            address: "cic.example.org:7443".to_owned(),
+            key: key(5),
+            fingerprint: key(5).fingerprint(),
+            handle: "Vega".to_owned(),
+            event: None,
+            hosted,
+            portal: portal.map(str::to_owned),
+        }),
+        event: Some(EventRef {
+            id: event.to_owned(),
+            name: "Op One".to_owned(),
+            group: None,
+        }),
+        ..LinkInfo::default()
+    };
+    hub.set_link(link(true, Some("https://cic.example.org"), "op-1"));
+    let m = hub.model();
+    assert_eq!(
+        m.event_url.as_deref(),
+        Some("https://cic.example.org/events/op-1")
+    );
+    let text = to_text(&m);
+    assert!(
+        text.contains(r#""eventUrl":"https://cic.example.org/events/op-1""#),
+        "{text}"
+    );
+    assert!(
+        text.contains(r#""portal":"https://cic.example.org""#),
+        "{text}"
+    );
+    hub.set_link(link(true, None, "op-1"));
+    assert_eq!(hub.model().event_url, None, "an older connection string");
+    hub.set_link(link(false, Some("https://cic.example.org"), "op-1"));
+    assert_eq!(hub.model().event_url, None, "peer to peer");
+    hub.set_link(link(true, Some("https://cic.example.org"), "Op One"));
+    assert_eq!(hub.model().event_url, None, "not an event id");
 }

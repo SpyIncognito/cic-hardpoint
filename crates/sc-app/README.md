@@ -13,10 +13,18 @@ See `hardpoint --help`. `--no-splash` skips the launch splash.
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `splash` | boolean | `true` | `false`: no splash at launch |
+| `relay` | object | `{ "mode": "off" }` | Relay mode (PROTOCOL.md section 5). `mode` is `off`, `relay` (this game PC relays its pages to the paired companion and starts straight into the relay bar: no splash, no dashboard webview) or `companion` (this machine shows the game PC's pages and listens for it); `port` is where a companion listens (default 47521). Set in the dashboard's Relay panel; the service writes this key and keeps the others |
+| `time` | object | `{ "zone": "auto", "clock": "24h" }` | How the dashboard shows times: `zone` is `auto` (this computer's zone) or an IANA zone name from tzdata's `zone.tab` (or `UTC`), `clock` is `24h` or `12h`. Set in the dashboard's edit pane, under Time; the service writes this key and keeps the others. A bad field falls back to its default |
 
 ```json
-{ "splash": false }
+{ "splash": false, "time": { "zone": "America/Denver", "clock": "12h" } }
 ```
+
+## Relay bar
+
+![The Relay panel on a companion, with its pairing code shown](../../docs/screenshots/relay-companion.png)
+
+In relay mode the game PC shows only a small bar: its title bar and its own line show the link's status ("relaying to laptop", "connecting to laptop (retry in 4 s)", "not paired at <address>"), beside three buttons: **Stop relay** (or **Connect** when not linked), **Settings** and **Exit relay mode**. The bar is drawn on the CPU (`src/bar.rs`, Barlow from `assets/font`) and shown with softbuffer: no webview, no unsafe code of ours, and a repaint only when the status, the pointer's hover or press, or the display scale changes, or when Windows asks. The detached tabs close. The same actions are in the tray menu (Relay: stop relay or connect, Relay settings, Exit relay mode) and on keys while the bar has focus: D stops or connects, S opens the full window at its Relay panel (closing it drops the webview and leaves the bar), X or the close box exits relay mode and returns to the full window and the detached tabs. Stop relay from either side breaks the link: the companion can also unpair or leave.
 
 ## Splash
 

@@ -519,7 +519,11 @@ fn the_dashboard_keeps_its_theme_and_drops_a_removed_one() {
             .problems
             .is_empty()
     );
-    assert_eq!(store.get().theme, None);
+    assert_eq!(
+        store.get().theme.as_deref(),
+        Some(DEFAULT_THEME),
+        "the default is written"
+    );
 }
 
 #[test]
@@ -567,4 +571,49 @@ fn a_theme_saved_before_the_input_colours_takes_them_from_its_own() {
     for (token, from) in INPUT_FALLBACKS {
         assert_eq!(read.colors.get(token), read.colors.get(from), "{token}");
     }
+}
+
+#[test]
+fn a_new_tab_follows_the_theme_in_use() {
+    let store = DashboardStore::new(None);
+    let known = known_themes(&["rsi", "drake", "theme-1"]);
+    assert!(
+        store
+            .set_theme(Some(&json!("drake")), &known)
+            .unwrap()
+            .problems
+            .is_empty()
+    );
+    // The page shows RSI (the tab's own theme) over a Drake dashboard: the new tab is RSI too.
+    let rsi = store
+        .add_tab_in(None, Some(&json!("rsi")), &known)
+        .unwrap()
+        .tab
+        .unwrap();
+    assert_eq!(rsi.theme.as_deref(), Some("rsi"));
+    // The theme in use is the dashboard's: the new tab follows the dashboard, as before.
+    let same = store
+        .add_tab_in(None, Some(&json!("drake")), &known)
+        .unwrap()
+        .tab
+        .unwrap();
+    assert_eq!(same.theme, None);
+    assert_eq!(store.add_tab(None).unwrap().tab.unwrap().theme, None);
+    assert_eq!(
+        store
+            .add_tab_in(None, Some(&json!("neon")), &known)
+            .unwrap()
+            .problems,
+        ["unknown theme \"neon\""]
+    );
+    assert_eq!(store.get().tabs.len(), 4);
+    // With no dashboard theme stored the default is the one in use.
+    let fresh = DashboardStore::new(None);
+    assert_eq!(fresh.get().theme, None);
+    let t = fresh
+        .add_tab_in(None, Some(&json!(DEFAULT_THEME)), &known)
+        .unwrap()
+        .tab
+        .unwrap();
+    assert_eq!(t.theme, None);
 }
