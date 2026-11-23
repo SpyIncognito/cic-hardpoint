@@ -162,6 +162,19 @@ async fn next(ws: &mut Socket) -> Option<Value> {
     }
 }
 
+const UNTIL_DEADLINE: Duration = Duration::from_secs(20);
+
+/// The next JSON message, or `None` when the socket closed or the deadline passed.
+async fn next_by(ws: &mut Socket, deadline: tokio::time::Instant) -> Option<Value> {
+    loop {
+        match tokio::time::timeout_at(deadline, ws.next()).await.ok()?? {
+            Ok(Message::Text(t)) => return Some(serde_json::from_str(&t).unwrap()),
+            Ok(Message::Close(_)) | Err(_) => return None,
+            Ok(_) => {}
+        }
+    }
+}
+
 struct Page {
     ws: Socket,
     seen: Vec<Value>,
@@ -172,8 +185,11 @@ impl Page {
         if let Some(m) = self.seen.iter().find(|m| found(m)) {
             return m.clone();
         }
+        // One deadline for the whole wait, not per message: a scenario may stay quiet for seconds
+        // on a slow runner before the awaited push comes.
+        let deadline = tokio::time::Instant::now() + UNTIL_DEADLINE;
         loop {
-            let m = next(&mut self.ws).await.unwrap_or_else(|| {
+            let m = next_by(&mut self.ws, deadline).await.unwrap_or_else(|| {
                 panic!(
                     "the message did not come; seen {:?}",
                     self.seen
